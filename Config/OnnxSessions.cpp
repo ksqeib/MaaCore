@@ -1,4 +1,4 @@
-#include "OnnxSession.h"
+#include "OnnxSessions.h"
 
 #include <array>
 #include <filesystem>
@@ -6,7 +6,7 @@
 
 #include "Utils/Logger.hpp"
 
-bool asst::OnnxSession::load(const std::filesystem::path& path)
+bool asst::OnnxSessions::load(const std::filesystem::path& path)
 {
     LogTraceFunction;
     Log.info("load", path);

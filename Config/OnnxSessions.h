@@ -8,10 +8,10 @@
 
 namespace asst
 {
-    class OnnxSession final : public SingletonHolder<OnnxSession>, public AbstractResource
+    class OnnxSessions final : public SingletonHolder<OnnxSessions>, public AbstractResource
     {
     public:
-        virtual ~OnnxSession() override = default;
+        virtual ~OnnxSessions() override = default;
         virtual bool load(const std::filesystem::path& path) override;
 
         Ort::Session& get(const std::string& key) { return m_sessions.at(key); }

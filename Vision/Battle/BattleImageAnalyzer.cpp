@@ -28,20 +28,24 @@ bool asst::BattleImageAnalyzer::analyze()
 {
     clear();
 
-    // HP 作为 flag，无论如何都识别。表明当前画面是在战斗场景的
+    // flag 无论如何都识别。表明当前画面是在战斗场景的
     bool ret = flag_analyze();
-
-    if (m_target & Target::Home) {
-        ret |= home_analyze();
-    }
-
     if (!ret) {
         return false;
     }
 
+    //
+    // if (m_target & Target::Home) {
+    //    ret |= home_analyze();
+    //}
+
     // 可能没有干员（全上场了），所以干员识别结果不影响返回值
     if (m_target & Target::Oper) {
         opers_analyze();
+    }
+
+    if (m_target & Target::DetailPage) {
+        detail_page_analyze();
     }
 
     if (m_target & Target::Kills) {
@@ -52,9 +56,9 @@ bool asst::BattleImageAnalyzer::analyze()
         ret &= cost_analyze();
     }
 
-    if (m_target & Target::Vacancies) {
-        ret &= vacancies_analyze();
-    }
+    // if (m_target & Target::Vacancies) {
+    //     ret &= vacancies_analyze();
+    // }
 
     return ret;
 }
@@ -89,6 +93,16 @@ int asst::BattleImageAnalyzer::get_cost() const noexcept
     return m_cost;
 }
 
+bool asst::BattleImageAnalyzer::get_in_detail_page() const noexcept
+{
+    return m_in_detail_page;
+}
+
+bool asst::BattleImageAnalyzer::get_pause_button() const noexcept
+{
+    return m_pause_button;
+}
+
 void asst::BattleImageAnalyzer::clear() noexcept
 {
     m_opers.clear();
@@ -108,11 +122,19 @@ void asst::BattleImageAnalyzer::sort_opers_by_cost()
 bool asst::BattleImageAnalyzer::opers_analyze()
 {
     MultiMatchImageAnalyzer flags_analyzer(m_image);
-    flags_analyzer.set_task_info("BattleOpersFlag");
+    const auto& flag_task_ptr = Task.get("BattleOpersFlag");
+    flags_analyzer.set_task_info(flag_task_ptr);
+    flags_analyzer.set_log_tracing(false);
+    // if (m_target & Target::OperSeleted) {
+    //     // 更大的范围，能把被点击的升起来的干员也识别出来
+    //     // 但是可能造成误识别
+    //     flags_analyzer.set_roi(flag_task_ptr->rect_move);
+    // }
     if (!flags_analyzer.analyze()) {
         return false;
     }
     flags_analyzer.sort_result_horizontal();
+    const auto& flags = flags_analyzer.get_result();
 
     const auto click_move = Task.get("BattleOperClickRange")->rect_move;
     const auto role_move = Task.get("BattleOperRoleRange")->rect_move;
@@ -120,9 +142,10 @@ bool asst::BattleImageAnalyzer::opers_analyze()
     const auto avlb_move = Task.get("BattleOperAvailable")->rect_move;
     const auto cooling_move = Task.get("BattleOperCooling")->rect_move;
     const auto avatar_move = Task.get("BattleOperAvatar")->rect_move;
+    // const int unselected_y = flag_task_ptr->roi.y;
 
     size_t index = 0;
-    for (const MatchRect& flag_mrect : flags_analyzer.get_result()) {
+    for (const MatchRect& flag_mrect : flags) {
         battle::DeploymentOper oper;
         oper.rect = flag_mrect.rect.move(click_move);
         if (oper.rect.x + oper.rect.width >= m_image.cols) {
@@ -155,10 +178,11 @@ bool asst::BattleImageAnalyzer::opers_analyze()
         Rect role_rect = flag_mrect.rect.move(role_move);
         oper.role = oper_role_analyze(role_rect);
 
-        // 费用识别的不太准，暂时也没用上，先注释掉，TODO：优化费用识别
+        // 干员费用识别的不太准，暂时也没用上，先注释掉，TODO：优化费用识别
         // Rect cost_rect = flag_mrect.rect.move(cost_move);
         // oper.cost = oper_cost_analyze(cost_rect);
         oper.index = index++;
+        // oper.selected = flag_mrect.rect.y < unselected_y;
 
         m_opers.emplace_back(std::move(oper));
     }
@@ -177,6 +201,7 @@ asst::battle::Role asst::BattleImageAnalyzer::oper_role_analyze(const Rect& roi)
     static const std::string TaskName = "BattleOperRole";
     static const std::string Ext = ".png";
     BestMatchImageAnalyzer role_analyzer(m_image);
+    role_analyzer.set_log_tracing(false);
     role_analyzer.set_task_info(TaskName);
     role_analyzer.set_roi(roi);
 
@@ -187,7 +212,7 @@ asst::battle::Role asst::BattleImageAnalyzer::oper_role_analyze(const Rect& roi)
         return battle::Role::Unknown;
     }
 
-    const auto& templ_name = role_analyzer.get_result_name();
+    const auto& templ_name = role_analyzer.get_result().name;
 
     std::string role_name = templ_name.substr(TaskName.size(), templ_name.size() - TaskName.size() - Ext.size());
 
@@ -290,7 +315,7 @@ bool asst::BattleImageAnalyzer::home_analyze()
     return true;
 }
 
-bool asst::BattleImageAnalyzer::hp_analyze()
+bool asst::BattleImageAnalyzer::hp_flag_analyze()
 {
     // 识别 HP 的那个蓝白色图标
     auto flag_task_ptr = Task.get("BattleHpFlag");
@@ -305,6 +330,13 @@ bool asst::BattleImageAnalyzer::hp_analyze()
         }
     }
     return true;
+}
+
+bool asst::BattleImageAnalyzer::kills_flag_analyze()
+{
+    MatchImageAnalyzer flag_analyzer(m_image);
+    flag_analyzer.set_task_info("BattleKillsFlag");
+    return flag_analyzer.analyze();
 }
 
 bool asst::BattleImageAnalyzer::kills_analyze()
@@ -399,16 +431,47 @@ bool asst::BattleImageAnalyzer::vacancies_analyze()
 
 bool asst::BattleImageAnalyzer::flag_analyze()
 {
-    MatchImageAnalyzer flag_analyzer(m_image);
-    flag_analyzer.set_task_info("BattleOfficiallyBegin");
-    if (flag_analyzer.analyze()) {
-        return true;
-    }
+    return pause_button_analyze() || hp_flag_analyze() || kills_flag_analyze();
+}
 
-    flag_analyzer.set_task_info("BattleKillsFlag");
-    if (flag_analyzer.analyze()) {
-        return true;
-    }
+bool asst::BattleImageAnalyzer::pause_button_analyze()
+{
+    auto has_started_task_ptr = Task.get("BattleHasStarted");
+    cv::Mat roi = m_image(make_rect<cv::Rect>(has_started_task_ptr->roi));
+    cv::Mat roi_gray;
+    cv::cvtColor(roi, roi_gray, cv::COLOR_BGR2GRAY);
+    cv::Mat bin;
+    const int value_threshold = has_started_task_ptr->special_params[0];
+    cv::threshold(roi_gray, bin, value_threshold, 255, cv::THRESH_BINARY);
+    int count = cv::countNonZero(bin);
+    const int count_threshold = has_started_task_ptr->special_params[1];
+    Log.trace(__FUNCTION__, "count", count, "threshold", count_threshold);
 
-    return hp_analyze();
+    m_pause_button = count > count_threshold;
+    return m_pause_button;
+}
+
+bool asst::BattleImageAnalyzer::detail_page_analyze()
+{
+    auto analyze = [&](const std::string& task_name) {
+        auto task_ptr = Task.get(task_name);
+        cv::Mat roi = m_image(make_rect<cv::Rect>(task_ptr->roi));
+        cv::Mat roi_hsv;
+        cv::cvtColor(roi, roi_hsv, cv::COLOR_BGR2HSV);
+        cv::Mat bin1;
+        cv::inRange(roi_hsv, cv::Scalar(99, 235, 235), cv::Scalar(105, 255, 255), bin1);
+        int count1 = cv::countNonZero(bin1);
+
+        cv::Mat bin2;
+        cv::inRange(roi_hsv, cv::Scalar(99, 235, 135), cv::Scalar(105, 255, 155), bin2);
+        int count2 = cv::countNonZero(bin2);
+
+        const int threshold = task_ptr->special_params[0];
+        Log.info("detail_page, count:", count1, count2, ", threshold:", threshold);
+
+        return count1 > threshold || count2 > threshold;
+    };
+
+    m_in_detail_page = analyze("BattleOperDetailPageFlag") || analyze("BattleOperDetailPageOldFlag");
+    return m_in_detail_page;
 }
