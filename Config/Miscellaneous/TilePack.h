@@ -71,7 +71,7 @@ public:
     std::optional<LazyMap::value_type> find(const KeyT& key) const
     {
         for (const auto& pair : m_summarize) {
-            if (pair.first == key) {
+            if (pair.first.match(key)) {
                 return pair;
             }
         }
