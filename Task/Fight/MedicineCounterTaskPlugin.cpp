@@ -75,6 +75,7 @@ bool asst::MedicineCounterTaskPlugin::_run()
         return true;
     };
 
+    // 逻辑上不混合执行一般吃药逻辑和临期药逻辑, 当未超出使用次数上限时, 临期药也当做普通药品使用
     if (m_used_count < m_max_count && using_medicine->using_count + m_used_count > m_max_count) {
         reduce_excess(*using_medicine, m_used_count + using_medicine->using_count - m_max_count);
         if (!refresh_medicine_count()) {
@@ -144,6 +145,27 @@ bool asst::MedicineCounterTaskPlugin::_run()
         }
     }
 
+    if (m_used_count + using_medicine->using_count >= m_max_count) {
+        if (m_use_expiring) {
+            bool has_non_expiring = false;
+            for (const auto& [use, _, __, is_expiring] : using_medicine->medicines) {
+                if (use > 0 && is_expiring != ExpiringStatus::Expiring) {
+                    has_non_expiring = true;
+                    break;
+                }
+            }
+            if (has_non_expiring) {
+                LogError << __FUNCTION__
+                         << "There are non-expiring medicines, and total count exceed max, return false";
+                return false;
+            }
+        }
+        else {
+            LogError << __FUNCTION__ << "Total medicine count exceed max, return false";
+            return false;
+        }
+    }
+
     if (!ProcessTask(*this, { "MedicineConfirm" }).set_retry_times(5).run()) {
         Log.error(__FUNCTION__, "unable to run medicine confirm");
         return false;
@@ -197,12 +219,12 @@ std::optional<asst::MedicineCounterTaskPlugin::MedicineResult>
         inventory_ocr.set_task_info(inventory_task);
         inventory_ocr.set_roi(inventory_rect);
         if (!inventory_ocr.analyze()) {
-            Log.error(__FUNCTION__, "medicine using count analyze failed");
+            Log.error(__FUNCTION__, "medicine inventory count analyze failed");
             return std::nullopt;
         }
 
         // 仅在已使用>=上限时才进行过期判断，否则下次再检查，理智不够会进第二次的
-        auto is_expiring = ExpiringStatus::UnSure;
+        auto is_expiring = ExpiringStatus::Unknown;
         if (m_used_count >= m_max_count) {
             RegionOCRer expiring_ocr(image);
             expiring_ocr.set_task_info(expiring_task);
