@@ -114,7 +114,9 @@ std::vector<Matcher::RawResult> Matcher::preproc_and_match(const cv::Mat& image,
 
         if (std::holds_alternative<std::string>(ptempl)) {
             templ_name = std::get<std::string>(ptempl);
-            LogError << __FUNCTION__ << "| template is empty.png";
+            if (templ_name == "empty.png") {
+                LogError << __FUNCTION__ << "| template is empty.png";
+            }
             templ = TemplResource::get_instance().get_templ(templ_name);
         }
         else if (std::holds_alternative<cv::Mat>(ptempl)) {
