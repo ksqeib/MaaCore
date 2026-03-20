@@ -129,6 +129,7 @@ bool asst::FightTask::set_params(const json::value& params)
         m_stage_drops_plugin_ptr->set_server(server);
     }
 
+    m_stage_drops_plugin_ptr->set_target_stage(stage);
     m_fight_task_ptr->set_times_limit("MedicineConfirm", medicine)
         .set_times_limit("ExpiringMedicineConfirm", expiring_medicine)
         .set_times_limit("StoneConfirm", stone)

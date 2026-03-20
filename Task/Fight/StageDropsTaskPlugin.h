@@ -31,6 +31,8 @@ public:
     bool set_server(std::string server);
     bool set_specify_quantity(std::unordered_map<std::string, int> quantity);
 
+    void set_target_stage(std::string stage_code) noexcept { m_target_stage = stage_code; }
+
 private:
     virtual bool _run() override;
 
@@ -51,7 +53,7 @@ private:
     static inline const std::string LastPRTS1TimeKey = Status::ProcessTaskLastTimePrefix + "Fight@PRTS1";
     static inline const std::string RecognitionRestrictionsKey = "StageDropsTaskPluginRestrictions";
 
-    std::string m_stage_code;
+    std::string m_stage_code, m_target_stage;
     StageDifficulty m_stage_difficulty = StageDifficulty::Normal;
     int m_stars = 0;
     int m_times = -2; // -2 means recognition failed, -1 means not found

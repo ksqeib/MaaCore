@@ -451,7 +451,7 @@ bool asst::StageDropsTaskPlugin::check_stage_valid()
     LogTraceFunction;
     static const std::string invalid_stage_code = "_INVALID_";
 
-    if (m_stage_code == invalid_stage_code) {
+    if (m_target_stage.empty() && m_stage_code == invalid_stage_code) {
         json::value info = basic_info();
         info["subtask"] = "CheckStageValid";
         info["why"] = "无奖励关卡";
