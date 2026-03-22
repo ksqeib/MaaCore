@@ -145,7 +145,7 @@ bool asst::MedicineCounterTaskPlugin::_run()
         }
     }
 
-    if (m_used_count + using_medicine->using_count >= m_max_count) {
+    if (m_used_count + using_medicine->using_count > m_max_count) {
         if (m_use_expiring) {
             bool has_non_expiring = false;
             for (const auto& [use, _, __, is_expiring] : using_medicine->medicines) {
