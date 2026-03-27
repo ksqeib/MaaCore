@@ -8,20 +8,20 @@ bool asst::BattleDataConfig::parse(const json::value& json)
 {
     LogTraceFunction;
     m_drones_confusing.clear();
-    m_opers.clear();
-    m_chars.clear();
-    m_ranges.clear();
     for (const auto& [id, char_data_json] : json.at("chars").as_object()) {
         battle::OperProps data;
         data.id = id;
-        std::string name = char_data_json.get("name", "");
+        std::string name = char_data_json.at("name").as_string();
+        std::string name_en = char_data_json.at("name_en").as_string();
+        std::string name_jp = char_data_json.at("name_jp").as_string();
+        std::string name_kr = char_data_json.at("name_kr").as_string();
+        std::string name_tw = char_data_json.at("name_tw").as_string();
 
         data.name = name;
-        data.name_en = char_data_json.get("name_en", "");
-        data.name_jp = char_data_json.get("name_jp", "");
-        data.name_kr = char_data_json.get("name_kr", "");
-        data.name_tw = char_data_json.get("name_tw", "");
-        data.name_display = char_data_json.get("name_display", "");
+        data.name_en = name_en;
+        data.name_jp = name_jp;
+        data.name_kr = name_kr;
+        data.name_tw = name_tw;
         static const std::unordered_map<std::string, battle::Role> RoleMap = {
             { "CASTER", battle::Role::Caster },   { "MEDIC", battle::Role::Medic },
             { "PIONEER", battle::Role::Pioneer }, { "SNIPER", battle::Role::Sniper },
