@@ -203,10 +203,7 @@ void asst::RoguelikeCollapsalParadigmTaskPlugin::check_banner()
                     return;
                 }
                 // 刷坍缩范式模式下，获得了不想要的坍缩范式
-                else if (
-                    m_config->get_mode() == RoguelikeMode::CLP_PDS &&
-                    !is_expected_precursor(cur_clp_pd))
-                {
+                else if (m_config->get_mode() == RoguelikeMode::CLP_PDS && !is_expected_precursor(cur_clp_pd)) {
                     exit_then_restart();
                     return;
                 }
@@ -333,10 +330,7 @@ void asst::RoguelikeCollapsalParadigmTaskPlugin::check_panel()
             return;
         }
         // 刷坍缩范式模式下，获得了不想要的坍缩范式
-        else if (
-            m_config->get_mode() == RoguelikeMode::CLP_PDS &&
-            !is_expected_precursor(cur_clp_pd))
-        {
+        else if (m_config->get_mode() == RoguelikeMode::CLP_PDS && !is_expected_precursor(cur_clp_pd)) {
             exit_then_restart();
             return;
         }

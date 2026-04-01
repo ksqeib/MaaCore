@@ -53,8 +53,7 @@ bool asst::StartUpTask::run()
     }
 
     if (!m_start_game) {
-        LogInfo << __FUNCTION__
-                << "| StartUpTask failed, start_game is not enabled, don't restart game and just fail";
+        LogInfo << __FUNCTION__ << "| StartUpTask failed, start_game is not enabled, don't restart game and just fail";
         return false;
     }
 
