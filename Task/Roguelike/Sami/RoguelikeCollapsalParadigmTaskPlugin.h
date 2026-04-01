@@ -31,6 +31,7 @@ private:
     void exit_then_stop() const;    // 退出当前肉鸽局并停止任务
 
     bool new_zone() const;          // 判断是否进入了新的区域
+    bool is_expected_precursor(const std::string& clp_pd) const; // 是否为目标二级坍缩的一级前置
 
     // 向 GUI 回调坍缩范式变动情况，表示坍缩范式 prev 变动为 cur
     // deepen_or_weaken = 1 表示加深
