@@ -1,0 +1,57 @@
+# IDE
+.idea/
+.vs/
+.vscode/
+
+# CMake / build outputs
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/install/
+/x64/
+/Debug/
+/Release/
+
+# Binary artifacts (our target is generated MaaCore.dll + pdb, do not track)
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.obj
+*.ipdb
+*.iobj
+
+# Runtime/dependency staging and caches
+/runtime/
+/debug/
+/tarball/
+/x-tools/
+/MaaUtils/MaaDeps/runtime/
+/MaaUtils/MaaDeps/tarball/
+/MaaUtils/MaaDeps/vcpkg/buildtrees/
+/MaaUtils/MaaDeps/vcpkg/downloads/
+/MaaUtils/MaaDeps/vcpkg/packages/
+/MaaUtils/MaaDeps/vcpkg/installed/
+
+# Standalone bootstrap cache and generated asset mirror
+_upstream/
+.bootstrap/
+
+# Optional local mirrors / backups
+/3rdparty/include._bak/
+/resource._bak/
+
+# Python
+__pycache__/
+*.pyc
+
+# Windows explorer / misc
+Thumbs.db
+desktop.ini
+*.log
+
+# CMake user presets
+/CMakeUserPresets.json
+

@@ -1,4 +1,48 @@
-file(GLOB_RECURSE maa_src *.h *.hpp *.cpp)
+cmake_minimum_required(VERSION 3.28)
+
+project(MaaCoreStandalone)
+
+option(INSTALL_FLATTEN "do not use bin/lib/include directory" ON)
+option(WITH_EMULATOR_EXTRAS "build with emulator extras" ${WIN32})
+option(WITH_EXTRA_CALLERS "build with extra callers" ${APPLE})
+option(WITH_MAC_SCK "build with macOS ScreenCaptureKit" ${APPLE})
+set(MAA_INCLUDE_ROOT "${PROJECT_SOURCE_DIR}/include" CACHE PATH "Single include root for standalone MaaCore")
+set(MAA_PUBLIC_INCLUDE_DIR "${MAA_INCLUDE_ROOT}/upstream" CACHE PATH "Public include directory for MaaCore API headers")
+set(MAA_THIRDPARTY_INCLUDE_DIR "${MAA_INCLUDE_ROOT}/3rd" CACHE PATH "Header-only 3rdparty include directory")
+
+if(INSTALL_FLATTEN)
+    set(MaaCore_install_flatten_args
+        RUNTIME DESTINATION .
+        LIBRARY DESTINATION .
+        ARCHIVE DESTINATION .
+        PUBLIC_HEADER DESTINATION .)
+endif()
+
+# MaaUtils.cmake wires MaaDeps + find_package + MaaUtils target for standalone builds.
+include(${PROJECT_SOURCE_DIR}/MaaUtils/MaaUtils.cmake)
+
+add_library(HeaderOnlyLibraries INTERFACE)
+
+if(NOT EXISTS "${MAA_PUBLIC_INCLUDE_DIR}")
+    message(FATAL_ERROR "Missing include/upstream directory. Run tools/bootstrap-standalone.ps1 to prepare standalone dependencies.")
+endif()
+
+if(NOT EXISTS "${MAA_THIRDPARTY_INCLUDE_DIR}")
+    message(FATAL_ERROR "Missing include/3rd directory. Run tools/bootstrap-standalone.ps1 to prepare standalone dependencies.")
+endif()
+
+target_include_directories(HeaderOnlyLibraries INTERFACE ${MAA_THIRDPARTY_INCLUDE_DIR})
+
+file(GLOB maa_root_src CONFIGURE_DEPENDS *.h *.hpp *.cpp)
+file(GLOB_RECURSE maa_tree_src CONFIGURE_DEPENDS
+    Common/*.h Common/*.hpp Common/*.cpp
+    Config/*.h Config/*.hpp Config/*.cpp
+    Controller/*.h Controller/*.hpp Controller/*.cpp
+    Task/*.h Task/*.hpp Task/*.cpp
+    Ui/*.h Ui/*.hpp Ui/*.cpp
+    Utils/*.h Utils/*.hpp Utils/*.cpp
+    Vision/*.h Vision/*.hpp Vision/*.cpp)
+set(maa_src ${maa_root_src} ${maa_tree_src})
 
 # Exclude the platform-specific OCR implementation that is not needed on this target
 if(ANDROID)
@@ -31,7 +75,7 @@ target_compile_definitions(MaaCore PRIVATE ASST_WITH_EMULATOR_EXTRAS=$<BOOL:${WI
 target_compile_definitions(MaaCore PUBLIC ASST_WITH_EXTRA_CALLERS=$<BOOL:${WITH_EXTRA_CALLERS}>)
 target_compile_definitions(MaaCore PRIVATE ASST_WITH_MAC_SCK=$<BOOL:${WITH_MAC_SCK}>)
 
-target_include_directories(MaaCore PUBLIC ${PROJECT_SOURCE_DIR}/include PRIVATE .)
+target_include_directories(MaaCore PUBLIC ${MAA_PUBLIC_INCLUDE_DIR} PRIVATE .)
 add_dependencies(MaaCore MaaUtils)
 if(ANDROID)
     find_package(ncnn REQUIRED)
@@ -74,51 +118,12 @@ if(ANDROID)
     target_link_libraries(MaaCore log)
 endif()
 
-file(GLOB_RECURSE MaaCore_PUBLIC_HEADERS ${PROJECT_SOURCE_DIR}/include/*.h)
+file(GLOB_RECURSE MaaCore_PUBLIC_HEADERS ${MAA_PUBLIC_INCLUDE_DIR}/*.h)
 target_sources(MaaCore PUBLIC ${MaaCore_PUBLIC_HEADERS})
 set_target_properties(MaaCore PROPERTIES PUBLIC_HEADER "${MaaCore_PUBLIC_HEADERS}")
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${maa_src})
 
-# 收集resource/tasks目录下的所有文件作为资源
-file(GLOB_RECURSE TASKS_RESOURCE_FILES
-    "${PROJECT_SOURCE_DIR}/resource/tasks/*"
-)
-file(GLOB_RECURSE GLOBAL_TASKS_RESOURCE_FILES
-    "${PROJECT_SOURCE_DIR}/resource/global/*/resource/tasks/*"
-)
-
-# 将资源文件添加到MaaCore目标，但不参与编译
-target_sources(MaaCore PRIVATE ${TASKS_RESOURCE_FILES})
-target_sources(MaaCore PRIVATE ${GLOBAL_TASKS_RESOURCE_FILES})
-
-# 使用source_group创建正确的文件夹结构
-source_group(TREE "${PROJECT_SOURCE_DIR}/resource/tasks"
-    PREFIX "Resource Files/tasks/CN"
-    FILES ${TASKS_RESOURCE_FILES}
-)
-
-# 为GLOBAL_TASKS_RESOURCE_FILES创建特殊的文件夹结构
-foreach(GLOBAL_FILE ${GLOBAL_TASKS_RESOURCE_FILES})
-    # 从完整路径中提取A部分：${PROJECT_SOURCE_DIR}/resource/global/A/resource/tasks/xxx
-    string(REGEX REPLACE "${PROJECT_SOURCE_DIR}/resource/global/([^/]+)/resource/tasks/.*" "\\1" FOLDER_NAME "${GLOBAL_FILE}")
-
-    # 获取相对于resource/tasks的文件路径部分
-    string(REGEX REPLACE "${PROJECT_SOURCE_DIR}/resource/global/[^/]+/resource/tasks/(.*)" "\\1" REL_FILE_PATH "${GLOBAL_FILE}")
-
-    # 获取文件的目录部分
-    get_filename_component(FILE_DIR "${REL_FILE_PATH}" DIRECTORY)
-
-    # 构建VS中的显示路径
-    if(FILE_DIR)
-        set(VS_GROUP "Resource Files/tasks/${FOLDER_NAME}/${FILE_DIR}")
-    else()
-        set(VS_GROUP "Resource Files/tasks/${FOLDER_NAME}")
-    endif()
-
-    # 设置单个文件的source_group
-    source_group("${VS_GROUP}" FILES "${GLOBAL_FILE}")
-endforeach()
 
 if(WIN32)
     # 注意：相比VS版本缺少了 -D_CONSOLE -D_WINDLL 两项

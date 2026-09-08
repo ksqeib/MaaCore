@@ -1,0 +1,118 @@
+name: Build MaaCore
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_config:
+        description: CMake build configuration
+        required: false
+        default: Debug
+        type: choice
+        options:
+          - Debug
+          - RelWithDebInfo
+      build_parallel:
+        description: Build parallelism, 0 means auto-detect runner CPU count
+        required: false
+        default: 0
+        type: number
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      BUILD_CONFIG: ${{ inputs.build_config || 'Debug' }}
+      BUILD_PARALLEL: ${{ inputs.build_parallel || '0' }}
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup sccache
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sccache
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('CMakeLists.txt', 'Assistant.cpp', 'Assistant.h', 'AsstCaller.cpp', 'AsstCallerExtra.cpp', 'InstHelper.cpp', 'InstHelper.h', 'Status.cpp', 'Status.h', 'Common/**', 'Config/**', 'Controller/**', 'Task/**', 'Ui/**', 'Utils/**', 'Vision/**', 'include/**', 'MaaUtils/MaaUtils.cmake', '.github/workflows/maacore-build.yml') }}
+          restore-keys: |
+            sccache-${{ runner.os }}-${{ env.BUILD_CONFIG }}-
+
+      - name: Cache MaaDeps
+        uses: actions/cache@v4
+        with:
+          path: |
+            MaaUtils/MaaDeps/maadeps.cmake
+            MaaUtils/MaaDeps/runtime/maa-x64-windows
+            MaaUtils/MaaDeps/tarball
+            MaaUtils/MaaDeps/vcpkg/installed/maa-x64-windows
+          key: maadeps-${{ runner.os }}-v2.14.1-standalone-v2
+          restore-keys: |
+            maadeps-${{ runner.os }}-v2.14.1-
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: build-standalone
+          key: maacore-build-${{ runner.os }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('CMakeLists.txt', 'Assistant.cpp', 'Assistant.h', 'AsstCaller.cpp', 'AsstCallerExtra.cpp', 'InstHelper.cpp', 'InstHelper.h', 'Status.cpp', 'Status.h', 'Common/**', 'Config/**', 'Controller/**', 'Task/**', 'Ui/**', 'Utils/**', 'Vision/**', 'include/**', 'tools/*.ps1', 'MaaUtils/MaaUtils.cmake', '.github/workflows/maacore-build.yml') }}
+          restore-keys: |
+            maacore-build-${{ runner.os }}-${{ env.BUILD_CONFIG }}-
+
+      - name: Bootstrap standalone prerequisites
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\bootstrap-standalone.ps1
+
+      - name: Build MaaCore (DLL + PDB)
+        shell: pwsh
+        run: |
+          $generator = "Ninja Multi-Config"
+          $parallel = [int]$env:BUILD_PARALLEL
+          if ($parallel -le 0) {
+            $parallel = [Environment]::ProcessorCount
+          }
+
+          Write-Host "Using generator: $generator"
+          Write-Host "Build config: $env:BUILD_CONFIG"
+          Write-Host "Build parallelism: $parallel"
+          sccache --zero-stats
+          powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 -SkipBootstrap -NoFresh -UseSccache -Config $env:BUILD_CONFIG -Generator $generator -Parallel $parallel
+
+      - name: Show sccache stats
+        if: always()
+        shell: pwsh
+        run: |
+          sccache --show-stats
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Copy-Item ".\build-standalone\bin\$env:BUILD_CONFIG\MaaCore.dll" .\artifacts\MaaCore.dll -Force
+          Copy-Item ".\build-standalone\bin\$env:BUILD_CONFIG\MaaCore.pdb" .\artifacts\MaaCore.pdb -Force
+
+      - name: Upload MaaCore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaaCore-windows-x64-${{ env.BUILD_CONFIG }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
