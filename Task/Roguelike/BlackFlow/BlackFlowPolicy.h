@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -14,6 +15,12 @@
 
 namespace asst::blackflow
 {
+// 选择支援页的六种普通奖励。下标与刷开局 blackflow_start_rewards 的低六位一致；
+// 策略里的支援顺序必须是它们的一个排列，少一种就可能一张都点不中。
+inline constexpr std::array<std::string_view, 6> LastRewardNames {
+    "未编号物", "调查预付款", "空间租赁", "退行补偿", "林间代步", "巢寄生",
+};
+
 using FactValue = std::variant<bool, std::int64_t, std::string, std::vector<std::string>>;
 
 enum class FactType
@@ -253,6 +260,14 @@ struct Milestone
 
     // 参与绑定候选的目标。是否真的绑定还要看可行性阶梯的结论。
     [[nodiscard]] bool binding_candidate() const noexcept { return enforcement != MilestoneEnforcement::Soft; }
+
+    // 策略目标有完成条件、参与绑定或错过即结算。其余按访问次数计分的软目标只是路线偏好，
+    // 换层即到期，本身不代表策略进展。
+    [[nodiscard]] bool strategy_goal() const noexcept
+    {
+        return completion == MilestoneCompletion::Condition || binding_candidate() ||
+               on_miss == MilestoneMissAction::Terminate;
+    }
 };
 
 struct MissionState
@@ -283,6 +298,41 @@ struct GrantedScrap
     Condition when;
 };
 
+struct EncounterRule
+{
+    std::string id;
+    std::string description;
+    std::string event_name;
+    int rank = 0;
+    Condition when;
+    std::vector<std::string> option_text;
+    std::size_t option_num = 0;
+    std::size_t choose = 0;
+    bool allow_fallback = true;
+    std::unordered_map<std::string, FactValue> on_selected;
+};
+
+struct EncounterSelection
+{
+    std::string event_name;
+    std::size_t option_num = 0;
+    std::size_t choose = 0; // 与事件配置一致，从 1 开始编号。
+    std::string option_text;
+    std::string rule_id;
+    bool used_fallback = false;
+};
+
+struct ShoppingRule
+{
+    std::string id;
+    std::string description;
+    std::string page_intent;
+    int rank = 0;
+    Condition when;
+    std::string buy_table = "default";
+    std::string sell_table;
+};
+
 struct PolicyModule
 {
     std::string id;
@@ -292,6 +342,8 @@ struct PolicyModule
     std::vector<ResourceReserve> reserves;
     std::vector<Milestone> milestones;
     std::vector<GrantedScrap> granted_scraps;
+    std::vector<EncounterRule> encounter_rules;
+    std::vector<ShoppingRule> shopping_rules;
 };
 
 struct StrategyTerminalRule
@@ -302,6 +354,15 @@ struct StrategyTerminalRule
     std::string reason;
     bool succeeded = false;
     std::string next_action;
+};
+
+struct InventoryCleanupPolicy
+{
+    int discard_max_rank = 1;
+    int extra_discards_after_clear = 0;
+    int rescan_after_rank = 0;
+    int max_attempts_per_rank = 1;
+    std::vector<std::string> discard_priority;
 };
 
 struct PolicyProfile
@@ -317,6 +378,8 @@ struct PolicyProfile
     // 按层声明而非整体开关：策略可能只在部分层这样收工，例如只打第二、四层的追猎，
     // 区间表达不了这种层集合。必须抵达终点的层一律不要列进来。
     std::unordered_set<int> no_AP_is_terminal_floors;
+    // 选择支援页的选取顺序，引用策略文件顶层 last_reward_orders 里的名字。
+    std::string last_reward_order = "default";
 };
 
 struct ResolvedPolicy
@@ -329,6 +392,8 @@ struct ResolvedPolicy
     std::vector<ResourceReserve> reserves;
     std::vector<Milestone> milestones;
     std::vector<GrantedScrap> granted_scraps;
+    std::vector<EncounterRule> encounter_rules;
+    std::vector<ShoppingRule> shopping_rules;
     std::vector<StrategyTerminalRule> terminal_rules;
     std::string failure_action = "stop_run";
     // 走出本层与耗尽行动力结局相同的层。这些层没有锁定目标的那几轮不再为出口预留行动力，
@@ -338,6 +403,12 @@ struct ResolvedPolicy
     // 区间表达不了这种层集合。必须抵达终点的层一律不要列进来。
     std::unordered_set<int> no_AP_is_terminal_floors;
 };
+
+[[nodiscard]] const EncounterRule*
+    resolve_encounter_rule(const ResolvedPolicy& policy, const FactStore& facts, std::string_view event_name);
+
+[[nodiscard]] std::optional<std::reference_wrapper<const ShoppingRule>>
+    resolve_shopping_rule(const ResolvedPolicy& policy, const FactStore& facts, std::string_view page_intent);
 
 class ResourceRegistry
 {
@@ -393,6 +464,7 @@ enum class DecisionReasonCategory
     StrategyEnd,
     ResourceReserve,
     PreferredGoal,
+    RouteCost,
     Development,
     RiskAvoidance,
     SafetyFallback,
@@ -411,9 +483,12 @@ struct PolicyDecision
     std::size_t total_candidates = 0;
     std::size_t eligible_candidates = 0;
     DecisionReasonCategory reason_category = DecisionReasonCategory::TieBreak;
+    // 第一名与第二名第一个分出胜负的比较项，来自策略规则、路线指标或第一名多推进的目标，三者只填其一。
     std::string decisive_rule_id;
-    std::string decisive_milestone_id;
+    std::string decisive_metric;
     std::vector<std::string> decisive_milestone_ids;
+    // 同一比较项里第二名推进得更多、第一名放弃的目标。
+    std::vector<std::string> forgone_milestone_ids;
     // 因为无法满足而被放弃的资源预留。放弃它们是为了不让本轮变成无路可走。
     std::vector<std::string> released_reserve_ids;
     std::string reason;
@@ -443,11 +518,11 @@ public:
     const MissionState& mission_state);
 [[nodiscard]] bool milestone_is_complete(const Milestone& milestone, const FactStore& facts);
 
-// 本层的策略目标：哪些节点算「达成即收工」，以及哪些强制目标要送进可行性阶梯去锁定。
+// 本层的策略目标：哪些节点算 ｢达成即收工｣ ，以及哪些强制目标要送进可行性阶梯去锁定。
 // 只依赖地图、任务进度和事实，不依赖会话状态，因此放在策略层。
 struct StrategyGoals
 {
-    // 声明「达成即收工」的目标节点。它与物理出口取并集，所以端点集合恒非空。
+    // 声明 ｢达成即收工｣ 的目标节点。它与物理出口取并集，所以端点集合恒非空。
     std::unordered_set<NodeId> terminal_nodes;
     // 待锁定的强制目标，按优先级从高到低。前 undemotable_count 条是无条件必达的，阶梯不会降级它们。
     std::vector<std::string> binding_candidates;

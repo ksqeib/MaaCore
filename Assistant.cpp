@@ -4,6 +4,7 @@
 #include <meojson/json.hpp>
 #include <new>
 #include <ranges>
+#include <string_view>
 
 #include "Config/GeneralConfig.h"
 #include "Config/GpuDeviceSelector.h"
@@ -21,6 +22,7 @@
 #include "Task/Interface/InfrastTask.h"
 #include "Task/Interface/MallTask.h"
 #include "Task/Interface/OperBoxTask.h"
+#include "Task/Interface/OperProgressTask.h"
 #include "Task/Interface/ParadoxCopilotTask.h"
 #include "Task/Interface/ReclamationTask.h"
 #include "Task/Interface/RecruitTask.h"
@@ -28,6 +30,7 @@
 #include "Task/Interface/SSSCopilotTask.h"
 #include "Task/Interface/SingleStepTask.h"
 #include "Task/Interface/StartUpTask.h"
+#include "Task/Interface/SwitchThemeTask.h"
 #include "Task/Interface/VideoRecognitionTask.h"
 #include "Utils/Logger.hpp"
 #ifdef ASST_DEBUG
@@ -43,6 +46,7 @@ enum class TaskExceptionKind
     None,
     OpenCV,
     OutOfMemory,
+    GpuDeviceRemoved,
     Standard,
     Unknown,
 };
@@ -54,6 +58,8 @@ const char* task_exception_name(TaskExceptionKind kind) noexcept
         return "OpenCVException";
     case TaskExceptionKind::OutOfMemory:
         return "OutOfMemory";
+    case TaskExceptionKind::GpuDeviceRemoved:
+        return "GpuDeviceRemoved";
     case TaskExceptionKind::Standard:
         return "UnhandledException";
     case TaskExceptionKind::Unknown:
@@ -61,6 +67,12 @@ const char* task_exception_name(TaskExceptionKind kind) noexcept
     default:
         return "";
     }
+}
+
+bool is_directml_device_removed(std::string_view message) noexcept
+{
+    return message.find("887A0005") != std::string_view::npos || message.find("887a0005") != std::string_view::npos ||
+           message.find("DXGI_ERROR_DEVICE_REMOVED") != std::string_view::npos;
 }
 
 template <typename Function>
@@ -295,7 +307,7 @@ bool asst::Assistant::ctrl_click(int x, int y)
 
 bool asst::Assistant::ctrl_screencap()
 {
-    return m_ctrler->screencap();
+    return m_ctrler->screencap_for_preview();
 }
 
 asst::Assistant::TaskId asst::Assistant::append_task(const std::string& type, const std::string& params)
@@ -324,6 +336,7 @@ asst::Assistant::TaskId asst::Assistant::append_task(const std::string& type, co
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(AwardTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(MallTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(InfrastTask)
+    ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(OperProgressTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(RecruitTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(RoguelikeTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(CopilotTask)
@@ -334,6 +347,7 @@ asst::Assistant::TaskId asst::Assistant::append_task(const std::string& type, co
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(DepotTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(OperBoxTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(ReclamationTask)
+    ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(SwitchThemeTask)
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(CustomTask)
 #ifdef ASST_DEBUG
     ASST_ASSISTANT_APPEND_TASK_FROM_STRING_IF_BRANCH(DebugTask)
@@ -398,7 +412,7 @@ std::vector<uchar> asst::Assistant::get_image() const
     if (!inited()) {
         return {};
     }
-    cv::Mat img = m_ctrler->get_image_cache();
+    cv::Mat img = m_ctrler->get_preview_image_cache();
     std::vector<uchar> buf;
     cv::imencode(".png", img, buf);
     return buf;
@@ -410,7 +424,7 @@ std::vector<uchar> asst::Assistant::get_image_bgr() const
         return {};
     }
 
-    cv::Mat img = m_ctrler->get_image_cache();
+    cv::Mat img = m_ctrler->get_preview_image_cache();
 
     if (!img.isContinuous()) {
         img = img.clone();
@@ -620,13 +634,26 @@ void Assistant::working_proc()
                 exception_kind = TaskExceptionKind::OutOfMemory;
             }
             catch (const std::exception& e) {
-                exception_kind = TaskExceptionKind::Standard;
-                best_effort([&] { Log.error("Unhandled exception in task thread", e.what()); });
+                if (is_directml_device_removed(e.what())) {
+                    exception_kind = TaskExceptionKind::GpuDeviceRemoved;
+                    best_effort([&] { LogError << "DirectML device removed in task thread" << e.what(); });
+                }
+                else {
+                    exception_kind = TaskExceptionKind::Standard;
+                    best_effort([&] { Log.error("Unhandled exception in task thread", e.what()); });
+                }
             }
             catch (...) {
                 exception_kind = TaskExceptionKind::Unknown;
                 best_effort([&] { Log.error("Unknown exception in task thread"); });
             }
+
+            const auto save_fail_img = [&]() {
+                if (task_ptr == nullptr) {
+                    return;
+                }
+                best_effort([&] { task_ptr->save_fail_img(); });
+            };
 
             lock.lock();
             if (!m_tasks_list.empty()) {
@@ -639,12 +666,17 @@ void Assistant::working_proc()
             }
 
             if (exception_kind != TaskExceptionKind::None) {
-                if (exception_kind == TaskExceptionKind::OutOfMemory) {
+                save_fail_img();
+                const bool stop_remaining_tasks = exception_kind == TaskExceptionKind::OutOfMemory ||
+                                                  exception_kind == TaskExceptionKind::GpuDeviceRemoved;
+                if (stop_remaining_tasks) {
                     lock.lock();
                     m_thread_idle = true;
                     m_tasks_list.clear();
                     lock.unlock();
-                    best_effort([&] { Log.error("Unhandled out of memory in task thread"); });
+                    if (exception_kind == TaskExceptionKind::OutOfMemory) {
+                        best_effort([&] { Log.error("Unhandled out of memory in task thread"); });
+                    }
                 }
 
                 const auto append_error = [&] {
@@ -664,6 +696,9 @@ void Assistant::working_proc()
             else {
                 auto msg = m_thread_idle ? AsstMsg::TaskChainStopped
                                          : (ret ? AsstMsg::TaskChainCompleted : AsstMsg::TaskChainError);
+                if (msg == AsstMsg::TaskChainError) {
+                    save_fail_img();
+                }
                 append_callback(msg, callback_json);
             }
 

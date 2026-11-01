@@ -25,6 +25,21 @@ struct CombinationScore
     std::unordered_set<std::string> only_need;
 };
 
+// 按心情阈值过滤干员，并排除本轮已安排的已知身份干员
+std::vector<size_t> eligible_indices(const std::vector<ScoreOper>& opers, const ScoreContext& context)
+{
+    std::vector<size_t> result;
+    for (size_t index = 0; index < opers.size(); ++index) {
+        if (!opers[index].operator_id.empty() && context.selected_operator_ids.contains(opers[index].operator_id)) {
+            continue;
+        }
+        if (opers[index].mood_ratio >= context.mood_threshold) {
+            result.emplace_back(index);
+        }
+    }
+    return result;
+}
+
 bool has_skill(const ScoreOper& oper, std::string_view skill)
 {
     return oper.skills.contains(std::string(skill));
@@ -225,7 +240,7 @@ CombinationScore score_trade(const std::vector<const ScoreOper*>& opers, const S
             else if (icon == "bskill_tra_ord_spd_ext1") { // 对陆接洽代表·β：深巡
                 base += 0.3;
                 if (is_selected(context, "char_4145_ulpia")) {
-                    base += 0.1;
+                    base += 0.101; // 手动定义，使之高于0.4（空巡、伺夜），能够优先上
                 }
             }
             else if (icon == "bskill_tra_spd&meet") { // 天生的顾问：渡桥
@@ -268,7 +283,7 @@ CombinationScore score_trade(const std::vector<const ScoreOper*>& opers, const S
                 storage += 2;
                 // 麒麟R夜刀与火龙S黑角同时在控制中枢时启用完整调查团加成。
                 if (is_selected(context, "char_1029_yato2") && is_selected(context, "char_1030_noirc2")) {
-                    base += 0.361; // 手动定义，使之shiao高于0.36
+                    base += 0.361; // 手动定义，使之高于0.36，总体高于0.4（空巡、伺夜）
                 }
             }
             else if (icon == "bskill_tra_spd&dorm2") { // 虔诚筹款·β：空弦
@@ -634,9 +649,8 @@ CombinationScore score_mfg(const std::vector<const ScoreOper*>& opers, const Sco
                     ++standard;
                 }
                 // 莱茵科技：白面鸮、赫默、多萝西、星源。
-                else if (is_operator(
-                             oper,
-                             { "char_128_plosis", "char_108_silent", "char_4048_doroth", "char_135_halo" })) {
+                else if (
+                    is_operator(oper, { "char_128_plosis", "char_108_silent", "char_4048_doroth", "char_135_halo" })) {
                     ++rhine;
                 }
                 // 红松骑士团：远牙、灰毫、野鬃；受薇薇安娜、焰尾和正义骑士号联动影响。
@@ -675,6 +689,9 @@ CombinationScore score_mfg(const std::vector<const ScoreOper*>& opers, const Sco
             }
             else if (icon == "bskill_man_spd_veen") {   // 手艺人：维伊
                 base += 0.299;                          // 认为训练室三级
+            }
+            else if (icon == "bskill_man_p3r") {        // 社群的意义：结城理
+                base += 0.25;                           // 暂不考虑其他SEES干员挂件
             }
             else if (icon == "bskill_man_spd_reduce") { // 模糊视线：铅踝
                 base += 0.22;
@@ -879,17 +896,6 @@ CombinationScore score_mfg(const std::vector<const ScoreOper*>& opers, const Sco
     return result;
 }
 
-std::vector<size_t> eligible_indices(const std::vector<ScoreOper>& opers, const ScoreContext& context)
-{
-    std::vector<size_t> result;
-    for (size_t index = 0; index < opers.size(); ++index) {
-        if (opers[index].mood_ratio >= context.mood_threshold) {
-            result.emplace_back(index);
-        }
-    }
-    return result;
-}
-
 ScoreResult select_combinations(const std::vector<ScoreOper>& opers, const ScoreContext& context)
 {
     const auto eligible = eligible_indices(opers, context);
@@ -974,10 +980,10 @@ double office_score(const ScoreOper& oper)
             score += 0.2;
         }
         else if (icon == "bskill_hire_spd_memento") { // 追忆：絮雨
-            score += 0.31;                            // + 0.01 使之高于0.5
+            score += 0.31;                            // + 0.01 使之高于0.5（斥罪）
         }
         else if (icon == "bskill_hire_spd_bd_n2") {   // 救援队·灾后普查：桑葚
-            score += 0.301;                           // + 0.001 使之高于0.5
+            score += 0.301;                           // + 0.001 使之高于0.5（斥罪）
         }
         // 内幕：山；巡游：絮雨；救援队·资源清点：桑葚；语言学：闪击；人事管理·α：巡林者。
         else if (
@@ -1078,6 +1084,9 @@ double power_score(const ScoreOper& oper, const ScoreContext& context)
         else if (icon == "bskill_pow_drone") { // 巡线框架：承曦格雷伊，按无人机上限折算
             score += 0.22;
         }
+        else if (icon == "bskill_pow_spd_p3r") { // 机械工学：埃癸斯
+            score += 0.151;
+        }
         else if (icon == "bskill_pow_spd3") { // 各类 20% 充能技能：多人共用
             score += 0.2;
             if (robot) {
@@ -1130,7 +1139,7 @@ double processing_score(const ScoreOper& oper, const ScoreContext& context)
             // 训练有素：芯片副产品 +80%。
             score += 0.8;
         }
-        else if (icon == "bskill_hire_kalts2" || icon == "bskill_ws_p_kalts2") {
+        else if (icon == "bskill_ws_p_kalts2") {
             // “泰拉的方舟” / 理论革新：凯尔希·思衡托。
             score += 0.8;
         }
@@ -1212,6 +1221,7 @@ double processing_score(const ScoreOper& oper, const ScoreContext& context)
     return score;
 }
 
+// 选择一名干员，适用于单干员设施，如发电站、办公室、加工站等。
 ScoreResult select_single(const std::vector<ScoreOper>& opers, const ScoreContext& context)
 {
     ScoreResult result;
@@ -1242,34 +1252,49 @@ ScoreResult select_single(const std::vector<ScoreOper>& opers, const ScoreContex
     return result;
 }
 
-// 会客室评分
+// 会客室选择干员
 ScoreResult select_reception(const std::vector<ScoreOper>& opers, const ScoreContext& context)
 {
     // 会客室先选专属高收益技能，其余候选保持原识别顺序。
     std::vector<size_t> priority;
     std::vector<size_t> preferred;
+    std::vector<size_t> tertiary;
     std::vector<size_t> remain;
+
     for (const size_t index : eligible_indices(opers, context)) {
         const auto& oper = opers[index];
         if (has_skill(oper, "bskill_meet_spdowned1")) { // 显眼的调查者：U-Official
             continue;                                   // 禁用尤里卡
         }
-        // 见行者、跃跃固定优先；菲亚梅塔已入驻时，信仰搅拌机也进入最高优先级。
-        if (has_any_skill(oper, { "bskill_meet_spd&cost", "bskill_meet_exchange" }) ||
+
+        // 第一优先级：见行者、克莱门莎、跃跃
+        // 菲亚梅塔已入驻时，信仰搅拌机也进入最高优先级。
+        if ((has_skill(oper, "bskill_meet_spd&cost") && oper.mood_ratio > 22.0 / 24.0) ||      // 见行者要求高心情
+            (has_skill(oper, "bskill_meet_spd&cost_char") && oper.mood_ratio > 22.0 / 24.0) || // 克莱门莎要求高心情
+            has_skill(oper, "bskill_meet_exchange") ||
             (has_skill(oper, "bskill_meet_spd_confes1") && is_selected(context, "char_300_phenxi"))) {
             priority.emplace_back(index);
         }
-        // 晓歌、伊内丝优先于普通干员；通用 25% 技能排除伺夜，避免占用其贸易站联动。
-        else if (
-            has_any_skill(oper, { "bskill_meet_spdnotowned2", "bskill_meet_spd_hast1" }) ||
-            (has_skill(oper, "bskill_meet_spd3") && !is_operator(oper, { "char_427_vigil" }))) {
+
+        // 第二优先级：赤刃明霄陈、伊内丝
+        else if (has_any_skill(oper, { "bskill_meet_bd_to_spd", "bskill_meet_spd_hast1" })) {
             preferred.emplace_back(index);
+        }
+
+        // 第三优先级：通用 25% 技能
+        // 排除伺夜，避免占用其贸易站联动。
+        // 排除信仰搅拌机，因信仰搅拌机的通用 20% 技能错误地使用了"bskill_meet_spd3"图标。
+        else if (
+            has_skill(oper, "bskill_meet_spd3") && !is_operator(oper, { "char_427_vigil" }) &&
+            !is_operator(oper, { "char_4194_rmixer" })) {
+            tertiary.emplace_back(index);
         }
         else {
             remain.emplace_back(index);
         }
     }
     priority.insert(priority.end(), preferred.begin(), preferred.end());
+    priority.insert(priority.end(), tertiary.begin(), tertiary.end());
     priority.insert(priority.end(), remain.begin(), remain.end());
     if (priority.size() > static_cast<size_t>(std::max(0, context.slots))) {
         priority.resize(context.slots);
@@ -1278,29 +1303,39 @@ ScoreResult select_reception(const std::vector<ScoreOper>& opers, const ScoreCon
 }
 
 // 控制中枢选择干员
+// 选择顺序：办公室加速, 特殊组合, 制造加速(153), 贸易加速, 制造加速, 其他设施心情减免
 ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreContext& context)
 {
-    // 控制中枢按固定优先级选择；同类制造加速、贸易加速、其他设施心情减免、办公室加速不重复占位。
     auto eligible = eligible_indices(opers, context);
+    // 若未启用红松骑士团组合，移除相关技能与干员
     if (!context.use_pinus_sylvestris) {
         std::erase_if(eligible, [&](size_t index) {
             return has_any_skill(opers[index], { "bskill_ctrl_psk", "bskill_ctrl_fraction_knight" }) ||
                    is_operator(opers[index], { "char_420_flamtl", "char_4098_vvana" });
         });
     }
+    // 若未启用深海猎人组合，移除相关技能与干员
     if (!context.use_abyssal_hunter) {
         std::erase_if(eligible, [&](size_t index) {
             return has_skill(opers[index], "bskill_ctrl_aegir2") || is_operator(opers[index], { "char_474_glady" });
         });
     }
+
     std::vector<size_t> best;
+
+    // 制造加速、贸易加速、其他设施心情减免、办公室加速干员，均存在"同种效果取最高"词条，每种效果最多入驻一名干员
+    // 以下四个变量用于标记是否已选入对应效果的干员
     bool manu_acc = false;    // 制造加速
     bool trading_acc = false; // 贸易加速
     bool mood_reduce = false; // 其他设施心情减免
     bool office_acc = false;  // 办公室加速
+
+    // 感知信息/人间烟火组合选项开启，且办公室入驻絮雨/桑葚时，激活对应标记
     const bool perception_information = context.use_perception_information && is_selected(context, "char_436_whispr");
     const bool worldly_plight = context.use_worldly_plight && is_selected(context, "char_473_mberry");
+
     constexpr size_t ControlSlotCount = 5;
+
     // context.slots 在缺员复查时是本轮仍需补入的人数；控制中枢的实际槽位始终是 5。
     const size_t selection_limit = std::min(ControlSlotCount, static_cast<size_t>(std::max(0, context.slots)));
 
@@ -1323,11 +1358,44 @@ ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreConte
         return true;
     };
 
+    // --- 办公室加速 ---
+    // 感知信息或人间烟火组合需要琴柳补办公室加速。
+    if (best.size() < ControlSlotCount && (perception_information || worldly_plight) &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_h_spd"); })) { // 感染力：琴柳
+        office_acc = true;
+    }
+    if (best.size() < ControlSlotCount && !office_acc &&
+        (
+            // 可靠伙伴：八幡海铃；同时影响后续叙拉古干员的效率计算。
+            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_hire_tmoris"); }) ||
+            // 办公室年度人物：焰狐龙梓兰
+            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_orchd2"); }))) {
+        office_acc = true;
+    }
+
+    // --- 特殊组合 ---
+    // 红松骑士团组合启用时，入驻焰尾与薇薇安娜
+    if (context.use_pinus_sylvestris && has_room_for(2)) {
+        // 红松的骑士：焰尾
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_psk"); });
+        // 烛骑士微光：薇薇安娜
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_fraction_knight"); });
+    }
+
+    // 絮雨在办公室时，选择高心情的夕提供感知信息。
+    if (best.size() < ControlSlotCount && perception_information) {
+        add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_cost_bd1") && // “不以物喜”：夕
+                   has_skill(oper, "bskill_ctrl_cost_bd2") && // “不以己悲”：夕
+                   oper.mood_ratio > 22.0 / 24.0;             // 心情需大于22
+        });
+    }
+
     // 诗怀雅与斩业星熊的龙门近卫局制造加速必须同时存在，否则整组放弃。
-    // 诗怀雅的 bskill_ctrl_t_spd 与多名干员共用，必须依赖姓名 OCR 得到稳定角色 ID。
-    if (best.size() < 2 && has_room_for(2)) {
+    // 诗怀雅的 bskill_ctrl_t_spd 与多名干员共用，必须依赖姓名 OCR 得到稳定角色 ID
+    if (has_room_for(2)) {
         const auto swire = std::ranges::find_if(eligible, [&](size_t index) {
-            return is_operator(opers[index], { "char_308_swire" });
+            return is_operator(opers[index], { "char_308_swire" }); // 诗怀雅
         });
         const auto guard = std::ranges::find_if(eligible, [&](size_t index) {
             return has_skill(opers[index], "bskill_token_prod_spd3_lungmenguard"); // 共事情谊：斩业星熊
@@ -1340,14 +1408,38 @@ ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreConte
         }
     }
 
+    // 桑葚在办公室时，选择高心情的令提供人间烟火。
+    if (best.size() < ControlSlotCount && worldly_plight) {
+        add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_cost_bd1&bd2") && // “山河远阔”：令
+                   oper.mood_ratio > 22.0 / 24.0;                 // 心情需大于22
+        });
+    }
+
+    // 桑葚在办公室时，重岳提供人间烟火并承担全局心情减免。
+    if (best.size() < ControlSlotCount && worldly_plight &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd3"); })) { // 知我为我：重岳
+        mood_reduce = true;
+    }
+
+    // 深海队只有在选项开启且不会挤掉完整发电/骑士联动时使用，高心情是必要条件。
+    if (best.size() < ControlSlotCount && context.use_abyssal_hunter &&
+        !(is_selected(context, "char_1027_greyy2") && is_selected(context, "char_420_flamtl") &&
+          is_selected(context, "char_4098_vvana"))) {
+        add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_aegir2") && // 集群狩猎·β：歌蕾蒂娅
+                   oper.mood_ratio > 22.0 / 24.0;           // 心情需大于22
+        });
+    }
+
     // 麒麟R夜刀与火龙S黑角组合：前者固定制造加速，后者按技能阶段提供贸易加速。
-    if (best.size() <= 2 && !manu_acc && !trading_acc && has_room_for(2)) {
+    if (!manu_acc && !trading_acc && has_room_for(2)) {
         const auto yato = std::ranges::find_if(eligible, [&](size_t index) {
-            return has_skill(opers[index], "bskill_ctrl_token_p_spd2") && // 以身作则
-                   has_skill(opers[index], "bskill_ctrl_cost_felyne");    // 耐力回复
+            return has_skill(opers[index], "bskill_ctrl_token_p_spd2") && // 以身作则：麒麟R夜刀
+                   has_skill(opers[index], "bskill_ctrl_cost_felyne");    // 耐力回复：麒麟R夜刀
         });
         const auto noir = std::ranges::find_if(eligible, [&](size_t index) {
-            // 秘传交涉术 / 团队合作。
+            // 秘传交涉术 / 团队合作：火龙S黑角
             return has_any_skill(opers[index], { "bskill_ctrl_token_t_spd", "bskill_ctrl_felyne" });
         });
         if (yato != eligible.end() && noir != eligible.end() && *yato != *noir) {
@@ -1358,72 +1450,91 @@ ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreConte
         }
     }
 
-    // 合作协议 / 大小姐 / 朝气蓬勃 / 情报主脑：阿米娅、诗怀雅、明椒、阿斯卡纶；
-    // 权变：望。两类技能均只占用一次贸易加速名额。
-    if (best.size() <= 3 && !trading_acc && add_first([](const ScoreOper& oper) {
-            return has_any_skill(oper, { "bskill_ctrl_t_spd", "bskill_ctrl_tra&prod" });
+    // --- 制造加速(153) ---
+    // 在153布局中，制造加速干员优先于贸易加速干员
+    if (context.trading_station_num == 1) {
+        // 制造加速优先选择有笑脸技能的M3
+        if (best.size() < ControlSlotCount && !manu_acc && add_first([](const ScoreOper& oper) {
+                return has_skill(oper, "bskill_ctrl_p_spd") && // 最高权限：Mon3tr
+                       has_skill(oper, "bskill_ctrl_cost");    // 博识生手：Mon3tr
+            })) {
+            manu_acc = true;
+        }
+
+        if (best.size() < ControlSlotCount && !manu_acc &&
+            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_p_spd"); })) { // 最高权限：凯尔希
+            manu_acc = true;
+        }
+
+        if (best.size() < ControlSlotCount && !manu_acc && context.workbench_num > 1 &&
+            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_token_p_spd"); })) { // 超频：布丁
+            manu_acc = true;
+        }
+    }
+
+    // --- 贸易加速 ---
+
+    /* 暂时禁用望的控制中枢技能，以防与训练室冲突
+    // 桑葚在办公室时，贸易加速优先选择望
+    if (best.size() < ControlSlotCount && !trading_acc && worldly_plight &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_tra&prod"); })) { // 权变：望
+        trading_acc = true;
+    }
+    */
+
+    // 阿斯卡纶额外拥有训练室加速技能，因此贸易加速优先选择阿斯卡纶
+    if (best.size() < ControlSlotCount && !trading_acc && add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_t_spd") &&    // 情报主脑：阿斯卡纶
+                   has_skill(oper, "bskill_ctrl_train_spd1"); // S.W.E.E.P.主管：阿斯卡纶
         })) {
         trading_acc = true;
     }
 
-    if (best.size() <= 4) {
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_psk"); }); // 红松的骑士：焰尾
-        add_first([](const ScoreOper& oper) {
-            return has_skill(oper, "bskill_ctrl_fraction_knight");                           // 烛骑士微光：薇薇安娜
-        });
+    // 诗怀雅与斩业星熊共同入驻有额外加成，因此当有其他贸易加速干员可用时，优先保留诗怀雅的心情
+    if (best.size() < ControlSlotCount && !trading_acc && add_first([](const ScoreOper& oper) {
+            // 合作协议 / 大小姐 / 朝气蓬勃 / 情报主脑：阿米娅、诗怀雅、明椒、阿斯卡纶
+            return has_skill(oper, "bskill_ctrl_t_spd") && !is_operator(oper, { "char_308_swire" });
+        })) { // 诗怀雅与其他干员共用技能图标，因此根据干员ID排除诗怀雅
+        trading_acc = true;
     }
 
-    // 絮雨在办公室时，选择高心情的夕提供感知信息。
-    if (best.size() < ControlSlotCount && perception_information) {
-        add_first([](const ScoreOper& oper) {
-            // “不以物喜” + “不以己悲”：夕。
-            return has_skill(oper, "bskill_ctrl_cost_bd1") && has_skill(oper, "bskill_ctrl_cost_bd2") &&
-                   oper.mood_ratio > 22.0 / 24.0;
-        });
+    /* 暂时禁用望的控制中枢技能，以防与训练室冲突
+    // 桑葚不在办公室时，望的优先级低于其他贸易加速干员
+    if (best.size() < ControlSlotCount && !trading_acc &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_tra&prod"); })) { // 权变：望
+        trading_acc = true;
     }
-    // 桑葚在办公室时，选择高心情的令提供人间烟火。
-    if (best.size() < ControlSlotCount && worldly_plight) {
-        add_first([](const ScoreOper& oper) {
-            return has_skill(oper, "bskill_ctrl_cost_bd1&bd2") && // “山河远阔”：令
-                   oper.mood_ratio > 22.0 / 24.0;
-        });
+    */
+
+    // 若无其他贸易加速干员可选，则选择诗怀雅提供贸易加速
+    if (best.size() < ControlSlotCount && !trading_acc && add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_t_spd") && is_operator(oper, { "char_308_swire" }); // 大小姐：诗怀雅
+        })) {
+        trading_acc = true;
     }
 
-    // 深海队只有在选项开启且不会挤掉完整发电/骑士联动时使用，高心情是必要条件。
-    if (best.size() < ControlSlotCount && context.use_abyssal_hunter &&
-        !(is_selected(context, "char_1027_greyy2") && is_selected(context, "char_420_flamtl") &&
-          is_selected(context, "char_4098_vvana"))) {
-        add_first([](const ScoreOper& oper) {
-            return has_skill(oper, "bskill_ctrl_aegir2") && // 集群狩猎·β：歌蕾蒂娅
-                   oper.mood_ratio > 22.0 / 24.0;
-        });
-    }
-
-    // 感知信息或人间烟火组合需要琴柳补办公室加速。
-    if (best.size() < ControlSlotCount && (perception_information || worldly_plight) &&
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_h_spd"); })) { // 感染力：琴柳
-        office_acc = true;
-    }
-    if (best.size() < ControlSlotCount && !office_acc &&
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_hire_tmoris"); })) {
-        // 可靠伙伴：八幡海铃；同时影响后续叙拉古干员的效率计算。
-        office_acc = true;
-    }
-    if (best.size() < ControlSlotCount && !manu_acc &&
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_p_spd"); })) {
-        // 最高权限：凯尔希；同类制造加速只选择一次。
+    // --- 制造加速 ---
+    // 制造加速优先选择有笑脸技能的M3
+    if (best.size() < ControlSlotCount && !manu_acc && add_first([](const ScoreOper& oper) {
+            return has_skill(oper, "bskill_ctrl_p_spd") && // 最高权限：Mon3tr
+                   has_skill(oper, "bskill_ctrl_cost");    // 博识生手：Mon3tr
+        })) {
         manu_acc = true;
     }
 
-    // 桑葚在办公室时，重岳提供人间烟火并承担全局心情减免。
-    if (best.size() < ControlSlotCount && worldly_plight &&
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd3"); })) { // 知我为我：重岳
-        mood_reduce = true;
+    if (best.size() < ControlSlotCount && !manu_acc &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_p_spd"); })) { // 最高权限：凯尔希
+        manu_acc = true;
     }
-    // 人间烟火组合已有重岳后，才继续补夕。
-    if (best.size() < ControlSlotCount &&
-        std::ranges::any_of(best, [&](size_t index) { return is_operator(opers[index], { "char_2024_chyue" }); })) {
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd1"); }); // “不以物喜”：夕
+
+    if (best.size() < ControlSlotCount && !manu_acc && context.workbench_num > 1 &&
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_token_p_spd"); })) { // 超频：布丁
+        manu_acc = true;
+    }
+
+    // 感知信息与人间烟火均未启用时，才启用灵知
+    if (best.size() < ControlSlotCount && !perception_information && !worldly_plight) {
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_t_limit&spd"); }); // 精密计算：灵知
     }
 
     // 丰川祥子技能可与制造加速叠加，后续同团成员按固定顺序补入。
@@ -1448,20 +1559,22 @@ ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreConte
         }
     }
 
-    if (best.size() < ControlSlotCount && !manu_acc && context.workbench_num > 1 &&
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_token_p_spd"); })) { // 超频：布丁
-        manu_acc = true;
-    }
-    if (best.size() < ControlSlotCount && !perception_information && !worldly_plight) {
-        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_t_limit&spd"); }); // 精密计算：灵知
+    // 人间烟火组合已有重岳后，才继续补夕。
+    if (best.size() < ControlSlotCount &&
+        std::ranges::any_of(best, [&](size_t index) { return is_operator(opers[index], { "char_2024_chyue" }); })) {
+        add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd1"); }); // “不以物喜”：夕
     }
 
+    // --- 其他设施心情减免 ---
     if (best.size() < ControlSlotCount && !mood_reduce) {
-        // 孤光共照：重岳；公事公办：玛恩纳；巴别塔之帜：维什戴尔。
         // 三者都承担全局心情减免，因此只选第一个可用者。
-        if (add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd4"); }) ||
-            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_lonely"); }) ||
-            add_first([](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_expand"); })) {
+        if (add_first(
+                [](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_cost_bd4"); }) || // 孤光共照：重岳
+            add_first(
+                [](const ScoreOper& oper) { return has_skill(oper, "bskill_ctrl_lonely"); }) ||   // 公事公办：玛恩纳
+            add_first([](const ScoreOper& oper) {
+                return has_skill(oper, "bskill_ctrl_cost_expand"); // 巴别塔之帜：维什戴尔
+            })) {
             mood_reduce = true;
         }
     }
@@ -1509,6 +1622,7 @@ ScoreResult select_control(const std::vector<ScoreOper>& opers, const ScoreConte
     return { std::move(best), score };
 }
 
+// 宿舍选择宿管
 ScoreResult select_dorm(const std::vector<ScoreOper>& opers, const ScoreContext& context)
 {
     const auto eligible = eligible_indices(opers, context);
@@ -1535,6 +1649,7 @@ ScoreResult select_dorm(const std::vector<ScoreOper>& opers, const ScoreContext&
                 }
             }
         }
+
         return { std::move(result), 0 };
     }
 
@@ -1703,7 +1818,269 @@ ScoreResult select_dorm(const std::vector<ScoreOper>& opers, const ScoreContext&
     }
     return { std::move(result), 0 };
 }
+
+double training_score_impl(const ScoreOper& oper, battle::Role trainee_role, int target_level)
+{
+    // 训练室导师技能按参考实现迁移：职业匹配、通用加成和目标等级专属加成叠加。
+    // 训练室一次只启动一级专精，target_level 始终表示本次要启动的下一级。
+    // 阈值设定为16让逻各斯类陪练能够连续在专一专二触发
+    if (oper.mood_ratio * 24.0 < 16.0) {
+        return -1.0;
+    }
+
+    double score = 0.0;
+    for (const auto& icon : oper.skills) {
+        if (icon == "bskill_train_vanguard1" && trainee_role == battle::Role::Pioneer) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_vanguard2" && trainee_role == battle::Role::Pioneer) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_vanguard3" && trainee_role == battle::Role::Pioneer) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train1_vanguard1" && trainee_role == battle::Role::Pioneer) {
+            score += 0.3 + (target_level == 1 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train_spd&profession2" && trainee_role == battle::Role::Pioneer) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train_specialist&pioneer1" &&
+            (trainee_role == battle::Role::Pioneer || trainee_role == battle::Role::Special)) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train2_specialist&pioneer1" &&
+            (trainee_role == battle::Role::Pioneer || trainee_role == battle::Role::Special)) {
+            score += 0.45;
+        }
+        else if (icon == "bskill_train_all") {
+            score += 0.25;
+        }
+        else if (icon == "bskill_train_reducetime" && target_level < 3) {
+            score += 0.7;
+        }
+        else if (icon == "bskill_train_spd&level" && target_level == 3) {
+            score += 0.7;
+        }
+        else if (icon == "bskill_train_fighter" && trainee_role == battle::Role::Warrior) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train_vanguard&sniper" &&
+            (trainee_role == battle::Role::Warrior || trainee_role == battle::Role::Sniper)) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train_caster&vanguard1" &&
+            (trainee_role == battle::Role::Warrior || trainee_role == battle::Role::Caster)) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train_caster&vanguard2" &&
+            (trainee_role == battle::Role::Warrior || trainee_role == battle::Role::Caster)) {
+            score += 0.45;
+        }
+        else if (icon == "bskill_train_lord" && trainee_role == battle::Role::Warrior) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_guard1" && trainee_role == battle::Role::Warrior) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_guard2" && trainee_role == battle::Role::Warrior) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_guard3" && trainee_role == battle::Role::Warrior) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train3_guard1" && trainee_role == battle::Role::Warrior) {
+            score += 0.3 + (target_level == 3 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train3_guard2" && trainee_role == battle::Role::Warrior) {
+            score += 0.3 + (target_level == 3 ? 0.65 : 0.0);
+        }
+        else if (icon == "bskill_train2_guard1" && trainee_role == battle::Role::Warrior) {
+            score += 0.3 + (target_level == 2 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train1_guard1" && trainee_role == battle::Role::Warrior) {
+            score += 0.3 + (target_level == 1 ? 0.45 : 0.0);
+        }
+        else if (
+            icon == "bskill_train_caster&medic1" &&
+            (trainee_role == battle::Role::Medic || trainee_role == battle::Role::Caster)) {
+            score += 0.3;
+        }
+        else if (
+            icon == "bskill_train_caster&medic2" &&
+            (trainee_role == battle::Role::Medic || trainee_role == battle::Role::Caster)) {
+            score += 0.45;
+        }
+        else if (icon == "bskill_train_medic1" && trainee_role == battle::Role::Medic) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_wandermedic" && trainee_role == battle::Role::Medic) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_medic2" && trainee_role == battle::Role::Medic) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_medic3" && trainee_role == battle::Role::Medic) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train2_medic1" && trainee_role == battle::Role::Medic) {
+            score += 0.3 + (target_level == 2 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train_defender1" && trainee_role == battle::Role::Tank) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_defender2" && trainee_role == battle::Role::Tank) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_defender3" && trainee_role == battle::Role::Tank) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train2_defender1" && trainee_role == battle::Role::Tank) {
+            score += 0.3 + (target_level == 2 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train_artsprotector" && trainee_role == battle::Role::Tank) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train1_defender1" && trainee_role == battle::Role::Tank) {
+            score += 0.3 + (target_level == 1 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train_caster1" && trainee_role == battle::Role::Caster) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_caster2" && trainee_role == battle::Role::Caster) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_caster3" && trainee_role == battle::Role::Caster) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train1_caster1" && trainee_role == battle::Role::Caster) {
+            score += 0.3 + (target_level == 1 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train2_caster1" && trainee_role == battle::Role::Caster) {
+            score += 0.3 + (target_level == 2 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train3_caster2" && trainee_role == battle::Role::Caster) {
+            score += 0.3 + (target_level == 3 ? 0.65 : 0.0);
+        }
+        else if (
+            icon == "bskill_train_caster&supporter1" &&
+            (trainee_role == battle::Role::Support || trainee_role == battle::Role::Caster)) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_supporter1" && trainee_role == battle::Role::Support) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_supporter2" && trainee_role == battle::Role::Support) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_supporter3" && trainee_role == battle::Role::Support) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train3_supporter2" && trainee_role == battle::Role::Support) {
+            score += 0.3 + (target_level == 3 ? 0.65 : 0.0);
+        }
+        else if (icon == "bskill_train_siegesniper" && trainee_role == battle::Role::Sniper) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_sniper1" && trainee_role == battle::Role::Sniper) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_sniper2" && trainee_role == battle::Role::Sniper) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_sniper3" && trainee_role == battle::Role::Sniper) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train3_sniper1" && trainee_role == battle::Role::Sniper) {
+            score += 0.3 + (target_level == 3 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train2_sniper1" && trainee_role == battle::Role::Sniper) {
+            score += 0.3 + (target_level == 2 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train3_sniper2" && trainee_role == battle::Role::Sniper) {
+            score += 0.3 + (target_level == 3 ? 0.65 : 0.0);
+        }
+        else if (icon == "bskill_train1_sniper2" && trainee_role == battle::Role::Sniper) {
+            score += 0.3 + (target_level == 1 ? 0.65 : 0.0);
+        }
+        else if (icon == "bskill_train_specialist1" && trainee_role == battle::Role::Special) {
+            score += 0.3;
+        }
+        else if (icon == "bskill_train_specialist2" && trainee_role == battle::Role::Special) {
+            score += 0.5;
+        }
+        else if (icon == "bskill_train_specialist3" && trainee_role == battle::Role::Special) {
+            score += 0.6;
+        }
+        else if (icon == "bskill_train1_specialist1" && trainee_role == battle::Role::Special) {
+            score += 0.3 + (target_level == 1 ? 0.45 : 0.0);
+        }
+        else if (icon == "bskill_train3_specialist2" && trainee_role == battle::Role::Special) {
+            score += 0.3 + (target_level == 3 ? 0.65 : 0.0);
+        }
+    }
+    return score;
+}
+
+ScoreResult select_training_impl(const std::vector<ScoreOper>& opers, const ScoreContext& context)
+{
+    if (context.slots <= 0) {
+        return { {}, 0.0 };
+    }
+    std::optional<size_t> best;
+    double best_score = -1.0;
+    for (size_t index = 0; index < opers.size(); ++index) {
+        const auto score = training_score_impl(opers[index], context.training_role, context.training_level);
+        if (score >= 0.0 && (!best || score > best_score)) {
+            best = index;
+            best_score = score;
+        }
+    }
+    return best ? ScoreResult { { *best }, best_score } : ScoreResult { {}, -1.0 };
+}
 } // namespace
+
+double training_score(const ScoreOper& oper, battle::Role trainee_role, int target_level)
+{
+    return training_score_impl(oper, trainee_role, target_level);
+}
+
+ScoreResult select_training(const std::vector<ScoreOper>& opers, const ScoreContext& context)
+{
+    return select_training_impl(opers, context);
+}
+
+// 回收站选择干员，参考会客室选人,使用多优先级数组拼接。
+// 优先捡海人（bskill_recycle_spd&cost2），其次拾荒者（bskill_recycle_spd&cost1），
+// 其余干员保持原识别顺序补位。默认不启用，需要时取消 select_best_opers 中的对应注释。
+ScoreResult select_recycle(const std::vector<ScoreOper>& opers, const ScoreContext& context)
+{
+    std::vector<size_t> priority;
+    std::vector<size_t> preferred;
+    std::vector<size_t> remain;
+    for (const size_t index : eligible_indices(opers, context)) {
+        if (has_skill(opers[index], "bskill_recycle_spd&cost2")) { // 捡海人：旅骨
+            priority.emplace_back(index);
+        }
+        else if (has_skill(opers[index], "bskill_recycle_spd&cost1")) { // 拾荒者：旅骨
+            preferred.emplace_back(index);
+        }
+        else {
+            remain.emplace_back(index);
+        }
+    }
+    priority.insert(priority.end(), preferred.begin(), preferred.end());
+    priority.insert(priority.end(), remain.begin(), remain.end());
+    if (priority.size() > static_cast<size_t>(std::max(0, context.slots))) {
+        priority.resize(std::max(0, context.slots));
+    }
+    return { std::move(priority), 0 };
+}
 
 const std::array<AbyssalHunterCandidate, 4>& get_abyssal_hunter_candidates()
 {
@@ -1764,9 +2141,16 @@ ScoreResult select_best_opers(const std::vector<ScoreOper>& opers, const ScoreCo
     if (context.facility == "Control") {
         return select_control(opers, context);
     }
+    if (context.facility == "Training") {
+        return select_training(opers, context);
+    }
     if (context.facility == "Dorm") {
         return select_dorm(opers, context);
     }
+    // 回收站暂不按评分选人：当前仅旅骨拥有回收站技能，常规换班按位置补位即可。
+    // if (context.facility == "Recycle") {
+    //     return select_recycle(opers, context);
+    // }
     return {};
 }
 

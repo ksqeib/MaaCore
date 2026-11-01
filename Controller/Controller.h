@@ -69,7 +69,9 @@ public:
 
     cv::Mat get_image(bool raw = false);
     cv::Mat get_image_cache() const;
+    cv::Mat get_preview_image_cache() const;
     bool screencap(bool allow_reconnect = false);
+    bool screencap_for_preview(bool allow_reconnect = false);
 
     bool start_game(const std::string& client_type);
     bool stop_game(const std::string& client_type);
@@ -82,7 +84,7 @@ public:
         const Point& p1,
         const Point& p2,
         int duration = 0,
-        bool extra_swipe = false,
+        SwipeExtraDirection extra_swipe = SwipeExtraDirection::None,
         double slope_in = 1,
         double slope_out = 1,
         bool with_pause = false);
@@ -90,7 +92,7 @@ public:
         const Rect& r1,
         const Rect& r2,
         int duration = 0,
-        bool extra_swipe = false,
+        SwipeExtraDirection extra_swipe = SwipeExtraDirection::None,
         double slope_in = 1,
         double slope_out = 1,
         bool with_pause = false,
@@ -109,7 +111,7 @@ public:
     bool back_to_home();
 
 private:
-    cv::Mat get_resized_image_cache() const;
+    cv::Mat get_resized_image_cache(bool for_preview = false) const;
 
     void clear_info() noexcept;
     void callback(AsstMsg msg, const json::value& details);
@@ -140,5 +142,6 @@ private:
 
     mutable std::shared_mutex m_image_mutex;
     cv::Mat m_cache_image;
+    cv::Mat m_preview_image;
 };
 } // namespace asst

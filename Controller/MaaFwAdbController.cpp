@@ -262,7 +262,7 @@ bool MaaFwAdbController::swipe(
     const Point& p1,
     const Point& p2,
     int duration,
-    bool extra_swipe [[maybe_unused]],
+    SwipeExtraDirection extra_swipe [[maybe_unused]],
     double slope_in [[maybe_unused]],
     double slope_out [[maybe_unused]],
     bool with_pause [[maybe_unused]])
@@ -321,6 +321,7 @@ bool MaaFwAdbController::press_esc()
 
 ControlFeat::Feat MaaFwAdbController::support_features() const noexcept
 {
+    // swipe 只把起止点与时长交给 MaaAdbControlUnit，extra_swipe、slope、with_pause 不会生效
     return ControlFeat::PRECISE_SWIPE;
 }
 

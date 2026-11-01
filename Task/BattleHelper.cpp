@@ -8,16 +8,15 @@
 #include "Config/Miscellaneous/BattleDataConfig.h"
 #include "Config/TaskData.h"
 #include "Controller/Controller.h"
-#include "MaaUtils/ImageIo.h"
 #include "MaaUtils/NoWarningCV.hpp"
-#include "MaaUtils/Time.hpp"
 #include "Task/ProcessTask.h"
+#include "Utils/DebugImageHelper.hpp"
 #include "Utils/Logger.hpp"
 #include "Vision/Battle/BattlefieldClassifier.h"
 #include "Vision/Battle/BattlefieldMatcher.h"
 #include "Vision/Matcher.h"
-#include "Vision/Miscellaneous/OperNameAnalyzer.h"
 #include "Vision/MultiMatcher.h"
+#include "Vision/Oper/OperNameAnalyzer.h"
 #include "Vision/RegionOCRer.h"
 #include <ranges>
 
@@ -460,9 +459,9 @@ bool asst::BattleHelper::deploy_oper(
         oper_point,
         target_point,
         duration,
-        false,
-        swipe_oper_task_ptr->special_params.at(2),
-        swipe_oper_task_ptr->special_params.at(3),
+        SwipeExtraDirection::None,
+        swipe_oper_task_ptr->special_params.at(2) / 10.0,
+        swipe_oper_task_ptr->special_params.at(3) / 10.0,
         deploy_with_pause && depoly_when_pause_not_support);
 
     // 拖动干员朝向
@@ -562,6 +561,48 @@ bool asst::BattleHelper::retreat_oper(const Point& loc, bool manually)
         std::erase_if(m_battlefield_opers, [&loc](const auto& pair) -> bool { return pair.second == loc; });
     }
     cancel_oper_selection(); // 兜底一下, 防止格子上面并没有干员, 导致点到隔壁格子
+    return true;
+}
+
+bool asst::BattleHelper::set_unit_location(battle::Role role, const std::string& name, const Point& loc)
+{
+    LogTraceFunction;
+
+    if (!m_normal_tile_info.contains(loc)) {
+        LogError << __FUNCTION__ << "| No tile found at" << loc << "for unit" << name;
+        return false;
+    }
+
+    auto oper_iter = std::ranges::find_if(m_battlefield_opers, [&](const auto& pair) {
+        return (role == battle::Role::Unknown || pair.first.role == role) && pair.first.name == name;
+    });
+
+    battle::OperNameTag tag;
+    if (oper_iter != m_battlefield_opers.cend()) {
+        tag = oper_iter->first;
+        if (oper_iter->second == loc) {
+            LogInfo << __FUNCTION__ << "| Location of unit" << tag.name << "is already" << loc;
+            return true;
+        }
+        // 单位已不在旧格，迁移时同步释放旧格占用
+        m_used_tiles.erase(oper_iter->second);
+        m_battlefield_opers.erase(oper_iter);
+    }
+    else {
+        // 不在场的单位（装置、设施等）直接登记，使其参与技能用法与自动开技能流程
+        tag = { role, name };
+        LogInfo << __FUNCTION__ << "| Unit" << name << "not on battlefield, register it at" << loc;
+    }
+
+    // 一格只保留一条单位记录：目标格已有占用者时，旧单位的记录整条移除（其名字不再可按名引用）
+    if (m_used_tiles.contains(loc)) {
+        const auto& pre_oper = m_used_tiles.at(loc);
+        LogInfo << __FUNCTION__ << "| remove previous oper" << pre_oper << loc;
+        m_battlefield_opers.erase(pre_oper);
+        m_used_tiles.erase(loc);
+    }
+
+    register_deployed_oper(tag.role, tag.name, loc);
     return true;
 }
 
@@ -731,13 +772,15 @@ bool asst::BattleHelper::wait_until_start(bool weak)
     return true;
 }
 
-bool asst::BattleHelper::wait_until_end(bool weak)
+bool asst::BattleHelper::wait_until_end(bool weak, bool do_strategy)
 {
     LogTraceFunction;
 
     cv::Mat image = m_inst_helper.ctrler()->get_image();
     while (!m_inst_helper.need_exit() && check_in_battle(image, weak)) {
-        do_strategic_action(image);
+        if (do_strategy) {
+            do_strategic_action(image);
+        }
         std::this_thread::yield();
 
         image = m_inst_helper.ctrler()->get_image();
@@ -855,24 +898,6 @@ void asst::BattleHelper::save_map(const cv::Mat& image)
 {
     LogTraceFunction;
 
-    using namespace asst::utils::path_literals;
-    const auto& MapRelativeDir = "debug"_p / "map"_p;
-
-    // 清理旧的 PNG 文件
-    static bool clean_png = true;
-    if (clean_png && std::filesystem::exists(MapRelativeDir)) {
-        for (const auto& entry : std::filesystem::directory_iterator(MapRelativeDir)) {
-            if (entry.path().extension() == ".png") {
-                std::error_code ec;
-                std::filesystem::remove(entry.path(), ec);
-                if (ec) {
-                    LogWarn << "Failed to remove png: " << entry.path() << ", " << ec.message();
-                }
-            }
-        }
-        clean_png = false;
-    }
-
     auto draw = image.clone();
 
     for (const auto& [loc, info] : m_normal_tile_info) {
@@ -885,7 +910,7 @@ void asst::BattleHelper::save_map(const cv::Mat& image)
         suffix = "-" + std::to_string(m_camera_count);
     }
     std::vector<int> jpeg_params = { cv::IMWRITE_JPEG_QUALITY, 50, cv::IMWRITE_JPEG_OPTIMIZE, 1 };
-    MAA_NS::imwrite(MapRelativeDir / asst::utils::path(m_stage_name + suffix + ".jpeg"), draw, jpeg_params);
+    utils::save_debug_image(draw, utils::path("debug") / "map", true, "", m_stage_name + suffix, "jpeg", jpeg_params);
 }
 
 bool asst::BattleHelper::click_oper_on_deployment(const std::string& name)
@@ -1026,10 +1051,8 @@ bool asst::BattleHelper::click_skill(int timeout_ms)
 
 #ifdef ASST_DEBUG
     if (!top_view.empty()) {
-        using namespace asst::utils::path_literals;
-        MAA_NS::imwrite(
-            asst::utils::path(std::format("debug/skill/{}_{}.png", m_stage_name, MAA_NS::format_now_for_filename())),
-            top_view);
+        // false positive 样本用作技能就绪识别的数据集，不做自动清理
+        utils::save_debug_image(top_view, utils::path("debug") / "skill", false, "", m_stage_name);
     }
 #endif
     cancel_oper_selection();
@@ -1103,20 +1126,24 @@ void asst::BattleHelper::fix_swipe_out_of_limit(
     p2 += adjust;
 }
 
-bool asst::BattleHelper::move_camera(const std::pair<double, double>& delta)
+bool asst::BattleHelper::move_camera(const std::pair<double, double>& delta, bool keep_kills)
 {
     LogTraceFunction;
     Log.info("move", delta.first, delta.second);
 
     update_kills(m_inst_helper.ctrler()->get_image());
 
-    // 还没转场的时候
-    if (m_kills != 0) {
-        wait_until_end(false);
-    }
+    // keep_kills 为 false 时（引航者试炼转场）：等待当前波次结束并归零击杀数；
+    // 为 true 时（同一波内移动镜头）：跳过等待与归零，击杀数保持连续
+    if (!keep_kills) {
+        // 还没转场的时候
+        if (m_kills != 0) {
+            wait_until_end(false);
+        }
 
-    m_kills = 0;
-    m_total_kills = 0;
+        m_kills = 0;
+        m_total_kills = 0;
+    }
 
     m_camera_shift.first += delta.first;
     m_camera_shift.second += delta.second;

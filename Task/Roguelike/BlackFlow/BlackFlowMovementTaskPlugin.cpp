@@ -29,6 +29,7 @@ constexpr std::string_view OpenPanelTask = "BlackFlow@Roguelike@MovementPanelOpe
 constexpr std::string_view PanelTitleTask = "BlackFlow@Roguelike@MovementPanelTitle";
 constexpr std::string_view PanelItemsTask = "BlackFlow@Roguelike@MovementPanelItems";
 constexpr std::string_view SwipePanelTask = "BlackFlow@Roguelike@MovementPanelSwipe";
+constexpr std::string_view SwipePanelBackTask = "BlackFlow@Roguelike@MovementPanelSwipeBack";
 constexpr std::string_view ClosePanelTask = "BlackFlow@Roguelike@MovementPanelBackClick";
 constexpr std::string_view PanelTitle = "选择移动方式";
 constexpr std::string_view LoadedText = "装载中";
@@ -36,8 +37,10 @@ constexpr std::string_view LoadedText = "装载中";
 constexpr int MaxOpenAttempts = 3;
 constexpr int MaxFrameRecognitionAttempts = 2;
 constexpr int MaxForwardSwipes = 3;
+constexpr int MaxBackwardSwipes = MaxForwardSwipes + 2;
+constexpr int PanelPositionTolerance = 20;
 constexpr int LoadedMarkerMaximumDistance = 60;
-// 「剩余N次」在卡片左上、名字在卡片右下，实测两者相距约 69px，下一张卡片的名字则在 200px 开外。
+// ｢剩余N次｣ 在卡片左上、名字在卡片右下，实测两者相距约 69px，下一张卡片的名字则在 200px 开外。
 constexpr int RemainingMarkerMaximumGap = 120;
 constexpr int SelectionSettleDelay = 500;
 constexpr int RecognitionRetryDelay = 200;
@@ -113,7 +116,7 @@ bool BlackFlowMovementTaskPlugin::_run()
             target_spec == nullptr ? std::string_view("unknown") : target_spec->id);
     }
     else {
-        // 不写结果的话，外层只会报「终止时没有策略结果」，真实原因就丢了。
+        // 不写结果的话，外层只会报 ｢终止时没有策略结果｣ ，真实原因就丢了。
         m_session->fail(
             "movement_selection_failed",
             error.empty() ? "movement selection failed" : error,
@@ -140,6 +143,8 @@ bool BlackFlowMovementTaskPlugin::observe_inventory()
             "movement_inventory_observation_failed",
             error.empty() ? "movement inventory OCR failed" : error,
             FailureDisposition::StopTask);
+        // 直接进入终止流程，保留识别失败时的加工品面板。
+        Task.set_task_base(std::string(InventoryObservationAction), "BlackFlow@Roguelike@StrategyTerminated-Enter");
         Log.error("BlackFlow movement inventory observation failed", error);
         report_outputs();
         return true;
@@ -264,9 +269,14 @@ BlackFlowMovementTaskPlugin::SelectionOutcome
         return SelectionOutcome::Failed;
     }
 
+    PanelFrame frame;
+    if (!rewind_panel(frame, error)) {
+        close_panel(nullptr);
+        return SelectionOutcome::Failed;
+    }
+
     for (int swipe_count = 0; swipe_count <= MaxForwardSwipes; ++swipe_count) {
-        PanelFrame frame;
-        if (!scan_current_frame(frame, error)) {
+        if (swipe_count > 0 && !scan_current_frame(frame, error)) {
             close_panel(nullptr);
             return SelectionOutcome::Failed;
         }
@@ -331,6 +341,38 @@ BlackFlowMovementTaskPlugin::SelectionOutcome
         return SelectionOutcome::Failed;
     }
     return SelectionOutcome::Unavailable;
+}
+
+bool BlackFlowMovementTaskPlugin::rewind_panel(PanelFrame& frame, std::string* error)
+{
+    if (!scan_current_frame(frame, error)) {
+        return false;
+    }
+
+    std::optional<int> previous_walk_y;
+    for (int swipe_count = 0; swipe_count <= MaxBackwardSwipes && !need_exit(); ++swipe_count) {
+        const auto walk = std::find_if(frame.items.begin(), frame.items.end(), [](const PanelItem& item) {
+            return item.movement == MovementKind::Walk;
+        });
+        if (walk != frame.items.end()) {
+            const int walk_y = vertical_center(walk->name_rect);
+            if (previous_walk_y && std::abs(walk_y - *previous_walk_y) < PanelPositionTolerance) {
+                return true;
+            }
+            previous_walk_y = walk_y;
+        }
+        else {
+            previous_walk_y.reset();
+        }
+        if (swipe_count == MaxBackwardSwipes || !run_fixed_task(SwipePanelBackTask)) {
+            break;
+        }
+        if (!scan_current_frame(frame, error)) {
+            return false;
+        }
+    }
+    set_error(error, "movement panel could not return to the top");
+    return false;
 }
 
 bool BlackFlowMovementTaskPlugin::ensure_panel_open(std::string* error)
@@ -464,8 +506,8 @@ bool BlackFlowMovementTaskPlugin::analyze_frame(const cv::Mat& image, PanelFrame
         return left_center == right_center ? left.name_rect.x < right.name_rect.x : left_center < right_center;
     });
 
-    // 「装载中」就贴在它那张卡片的名字上方，取垂直距离最近的名字即可；两者相距约 20px，
-    // 邻卡在 120px 开外。上限只用来挡「名字被 roi 下边界切掉、标记却还在」这一种情况。
+    // ｢装载中｣ 就贴在它那张卡片的名字上方，取垂直距离最近的名字即可；两者相距约 20px，
+    // 邻卡在 120px 开外。上限只用来挡 ｢名字被 roi 下边界切掉、标记却还在｣ 这一种情况。
     // frame.items 按移动类型合并后只保留最高分框；用原始 OCR 结果判断装载归属，避免丢失实际贴近标记的低分框。
     PanelItem* loaded_item = nullptr;
     int loaded_distance = std::numeric_limits<int>::max();
@@ -496,7 +538,7 @@ bool BlackFlowMovementTaskPlugin::analyze_frame(const cv::Mat& image, PanelFrame
         frame.loaded_movement = loaded_item->movement;
     }
 
-    // 一张卡片里「剩余N次」在上、名字在下，所以标记归属它下方最近的那个名字；
+    // 一张卡片里 ｢剩余N次｣ 在上、名字在下，所以标记归属它下方最近的那个名字；
     // 卡片只露出上半截时下方没有名字，丢掉，不能算到别人头上。
     for (const auto& [marker, remaining] : remaining_markers) {
         const int marker_bottom = marker.y + marker.height;

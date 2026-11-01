@@ -18,14 +18,16 @@ class InfrastTrainingTask;
 class InfrastDormTask;
 class ReplenishOriginiumShardTaskPlugin;
 class InfrastProcessingTask;
+class InfrastRecycleTask;
+class InfrastAssistantChangeTask;
 
 class InfrastTask final : public InterfaceTask
 {
     enum class Mode
     {
         Default = 0,
-        Custom = 10000,
-        Rotation = 20000,
+        Custom = 10'000,
+        Rotation = 20'000,
     };
 
 public:
@@ -33,6 +35,9 @@ public:
 
     InfrastTask(const AsstCallback& callback, Assistant* inst);
     virtual ~InfrastTask() override = default;
+
+    // 整轮基建入口：清空编组可用集后再跑各设施子任务
+    virtual bool run() override;
 
     virtual bool set_params(const json::value& params) override;
 
@@ -51,8 +56,10 @@ private:
     std::shared_ptr<InfrastOfficeTask> m_office_task_ptr = nullptr;
     std::shared_ptr<InfrastProcessingTask> m_processing_task_ptr = nullptr;
     std::shared_ptr<InfrastTrainingTask> m_training_task_ptr = nullptr;
+    std::shared_ptr<InfrastRecycleTask> m_recycle_task_ptr = nullptr;
     std::shared_ptr<InfrastDormTask> m_dorm_task_ptr = nullptr;
     std::shared_ptr<InfrastDormTask> m_dorm_task_ptr_post = nullptr;
+    std::shared_ptr<InfrastAssistantChangeTask> m_assistant_change_task_ptr = nullptr;
     std::shared_ptr<ReplenishOriginiumShardTaskPlugin> m_replenish_task_ptr = nullptr;
     std::shared_ptr<infrast::TaskData> m_task_data;
 };

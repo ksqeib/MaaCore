@@ -64,13 +64,15 @@ protected:
     bool retreat_oper(const std::string& name);
     bool retreat_oper(battle::Role role, const std::string& name);
     bool retreat_oper(const Point& loc, bool manually = true);
+    // 设置战场单位（干员位移修正 / 装置设施登记）的格子坐标：已在场则迁移双表记录，不在场则登记新条目
+    bool set_unit_location(battle::Role role, const std::string& name, const Point& loc);
     bool is_skill_ready(const Point& loc, const cv::Mat& reusable = cv::Mat());
     bool is_skill_ready(const std::string& name, const cv::Mat& reusable = cv::Mat());
     bool is_skill_ready(battle::Role role, const std::string& name, const cv::Mat& reusable = cv::Mat());
     // timeout_ms：0 为暂停快速路径（识别未命中即失败），正数为限时等待技能转好，-1 为不暂停无限等待
-    bool use_skill(const std::string& name, int timeout_ms = 500000);
-    bool use_skill(battle::Role role, const std::string& name, int timeout_ms = 500000);
-    bool use_skill(const Point& loc, int timeout_ms = 500000);
+    bool use_skill(const std::string& name, int timeout_ms = 500'000);
+    bool use_skill(battle::Role role, const std::string& name, int timeout_ms = 500'000);
+    bool use_skill(const Point& loc, int timeout_ms = 500'000);
     bool check_pause_button(const cv::Mat& reusable = cv::Mat());
     bool check_skip_plot_button(const cv::Mat& reusable = cv::Mat());
     // 检查是否有战斗中带头像的对话框
@@ -79,7 +81,7 @@ protected:
     bool check_in_speedup(const cv::Mat& reusable = cv::Mat());
     virtual bool check_in_battle(const cv::Mat& reusable = cv::Mat(), bool weak = true);
     virtual bool wait_until_start(bool weak = true);
-    bool wait_until_end(bool weak = true);
+    bool wait_until_end(bool weak = true, bool do_strategy = true);
     bool use_all_ready_skill(const cv::Mat& reusable = cv::Mat());
     bool check_and_use_skill(const std::string& name, bool& has_error, const cv::Mat& reusable = cv::Mat());
     bool check_and_use_skill(
@@ -96,8 +98,8 @@ protected:
     bool click_oper_on_battlefield(const std::string& name);
     bool click_oper_on_battlefield(battle::Role role, const std::string& name);
     bool click_oper_on_battlefield(const Point& loc);
-    bool click_retreat();                      // 这个是不带识别的，直接点
-    bool click_skill(int timeout_ms = 500000); // 这个是带识别的，转好了才点
+    bool click_retreat();                       // 这个是不带识别的，直接点
+    bool click_skill(int timeout_ms = 500'000); // 这个是带识别的，转好了才点
     bool cancel_oper_selection();
     // 修正终点超出范围的滑动，纠正时是否需要顺时针旋转
     void fix_swipe_out_of_limit(
@@ -107,7 +109,7 @@ protected:
         int height,
         int max_distance = INT_MAX,
         double radian = 0);
-    bool move_camera(const std::pair<double, double>& delta);
+    bool move_camera(const std::pair<double, double>& delta, bool keep_kills = false);
 
     std::string analyze_detail_page_oper_name(const cv::Mat& image, battle::Role role);
     std::optional<Rect> get_oper_rect_on_deployment(battle::Role role, const std::string& name) const;
@@ -121,8 +123,10 @@ protected:
 
     std::string m_stage_name;
     Map::Level m_map_data;
-    std::unordered_map<Point, TilePack::TileInfo> m_side_tile_info;   // 子弹时间的坐标映射
-    std::unordered_map<Point, TilePack::TileInfo> m_normal_tile_info; // 正常的坐标映射
+    // 拖拽部署时倾斜视角（俯角 10°）投影的格子屏幕坐标，拖拽落点按此视角计算（肉鸽朝向评估亦查其 TileKey）
+    std::unordered_map<Point, TilePack::TileInfo> m_side_tile_info;
+    // 正常战斗视角（无俯角）投影的格子屏幕坐标，点击场上格子、技能就绪检测等使用
+    std::unordered_map<Point, TilePack::TileInfo> m_normal_tile_info;
     Point m_skill_button_pos;
     Point m_retreat_button_pos;
     bool m_has_multi_stages = false;

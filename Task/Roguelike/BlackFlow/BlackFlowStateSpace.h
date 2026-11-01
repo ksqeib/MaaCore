@@ -27,7 +27,7 @@ using PlannerNodeMask = std::uint64_t;
 struct PlannerState
 {
     NodeId node = InvalidNodeId;
-    std::array<std::uint8_t, 13> movement_charges {};
+    std::array<std::uint8_t, MovementKindCount> movement_charges {};
     PlannerNodeMask completed_nodes = 0;
     PlannerNodeMask opened_blockers = 0;
     PlannerNodeMask consumed_lights = 0;
@@ -44,7 +44,7 @@ struct PlannerStateHash
 
 struct StateExpansionOptions
 {
-    // 策略声明「达成即收工」的目标节点。它与物理出口取并集构成端点集合，因此端点集合恒非空；
+    // 策略声明 ｢达成即收工｣ 的目标节点。它与物理出口取并集构成端点集合，因此端点集合恒非空；
     // 目标做没做完由 safety_goal 的合取项回答，不会因为策略目标暂时不存在就让求解无终点。
     std::unordered_set<NodeId> strategy_terminal_nodes;
     std::unordered_set<std::string> forbidden_action_ids;

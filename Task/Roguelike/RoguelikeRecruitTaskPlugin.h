@@ -32,12 +32,10 @@ protected:
     void slowly_swipe(bool to_left, int swipe_dist = 500);
 
 private:
-    // 使用助战干员开局
-    bool recruit_support_char();
     // 尝试招募指定助战干员
     bool recruit_support_char(const std::string& name, const int max_refresh);
-    // 招募自己的干员
-    bool recruit_own_char();
+    // 招募指定的自有干员
+    bool recruit_own_char(const std::string& name);
     // 直接招募第一个干员
     bool lazy_recruit();
     // 招募指定干员
@@ -58,6 +56,7 @@ private:
     mutable bool m_initail_recruit = false; // 是否第一次招募，第一次招募时会进行一些初始化操作
     bool m_starts_complete = false; // 开局干员是否已经招募，阵容中必须有开局干员，没有前仅招募start干员或预备干员
     bool m_team_complete = false;   // 阵容是否完备，阵容完备前，仅招募key干员或预备干员
-    std::string m_start_roles;      // 开局职业组，只存在于任务参数里，RoguelikeConfig 拿不到
+    // 指定的黑流策略；刷等级为空时 Core 推断为会飞三层的 burn 系策略
+    std::string m_blackflow_strategy;
 };
 }

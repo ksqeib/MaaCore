@@ -14,7 +14,6 @@ namespace asst::blackflow
 {
 namespace
 {
-constexpr std::size_t MovementKindCount = 13;
 constexpr std::size_t NodeTypeCount = 21;
 
 std::size_t movement_index(MovementKind movement) noexcept
@@ -44,6 +43,8 @@ bool geometry_matches(const GridPosition& source, const GridPosition& target, Mo
         return (row_delta == 0 || column_delta == 0) && row_delta + column_delta <= 3;
     case MovementRange::FullMap:
         return true;
+    case MovementRange::SameRowOrColumn:
+        return row_delta == 0 || column_delta == 0;
     }
     return false;
 }
@@ -137,6 +138,7 @@ bool BlackFlowCompactStateSpace::initialize(
                 node->traversal,
                 node->identity_state,
                 std::nullopt,
+                node->identity_from_template,
             });
         const PlannerNodeMask node_mask = PlannerNodeMask { 1 } << index;
         const std::size_t type_index = node_type_index(node->type);
@@ -356,7 +358,7 @@ NodeId BlackFlowCompactStateSpace::resolve_landing(std::uint8_t target) const no
     return m_nodes[target].transfer_landing.has_value() ? m_nodes[*m_nodes[target].transfer_landing].id : InvalidNodeId;
 }
 
-// 端点只表示「走到这里就没有后继了」，因此只认物理出口。策略终点是可以再走开的收工点，
+// 端点只表示 ｢走到这里就没有后继了｣ ，因此只认物理出口。策略终点是可以再走开的收工点，
 // 不能掐掉它的后继。成功与否由 OnDemandStateGraph::intern 写入状态时统一判定。
 bool BlackFlowCompactStateSpace::is_endpoint(const PlannerState& state) const noexcept
 {
@@ -543,7 +545,7 @@ std::optional<std::vector<CompactMoveAction>>
     }
 
     for (const MovementSpec& movement : movement_specs()) {
-        if (movement.kind == MovementKind::Walk) {
+        if (movement.kind == MovementKind::Walk || movement.landing_type_after_move.has_value()) {
             continue;
         }
         const int charges = source.movement_charges[movement_index(movement.kind)];
@@ -557,7 +559,7 @@ std::optional<std::vector<CompactMoveAction>>
             const bool targetable = target_type == NodeType::Empty
                                         ? effective_progress(source, target) != NodeProgress::Removed
                                         : targetable_for_walk(source, target);
-            if (!targetable || !node_type_allowed(movement, target_type)) {
+            if (!targetable || !movement_can_land(movement, target_type, m_nodes[target].identity_from_template)) {
                 continue;
             }
             targets.emplace_back(target);

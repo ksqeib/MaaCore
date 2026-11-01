@@ -31,6 +31,11 @@ public:
     [[nodiscard]] const blackflow::PolicyModule* get_module(const std::string& id) const noexcept;
     [[nodiscard]] const blackflow::PolicyProfile* get_profile(const std::string& id) const noexcept;
 
+    [[nodiscard]] const blackflow::InventoryCleanupPolicy& inventory_cleanup_policy() const noexcept
+    {
+        return m_inventory_cleanup_policy;
+    }
+
     [[nodiscard]] const std::unordered_map<std::string, blackflow::FactDefinition>& facts() const noexcept
     {
         return m_facts;
@@ -38,6 +43,9 @@ public:
 
     [[nodiscard]] std::optional<blackflow::ResolvedPolicy>
         resolve_profile(const std::string& id, std::string* error = nullptr) const;
+
+    // 该策略在选择支援页的选取顺序，策略没写就用 default。未知策略返回 nullptr。
+    [[nodiscard]] const std::vector<std::string>* last_reward_order(const std::string& profile_id) const noexcept;
 
     [[nodiscard]] int schema_version() const noexcept { return m_schema_version; }
 
@@ -61,6 +69,8 @@ private:
     std::unordered_map<std::string, blackflow::ResourceDefinition> m_resources;
     std::unordered_map<std::string, blackflow::FactDefinition> m_facts;
     std::unordered_map<std::string, blackflow::PolicyModule> m_modules;
+    blackflow::InventoryCleanupPolicy m_inventory_cleanup_policy;
+    std::unordered_map<std::string, std::vector<std::string>> m_last_reward_orders;
     std::unordered_map<std::string, blackflow::PolicyProfile> m_profiles;
 };
 

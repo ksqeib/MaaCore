@@ -32,6 +32,21 @@ const std::vector<NodeType> ShopTargetTypes = {
     NodeType::Shop,
 };
 
+const std::vector<NodeType> ExitTargetTypes = {
+    NodeType::Final,
+    NodeType::BattleBoss,
+    NodeType::Evacuate,
+};
+
+// 鸣笛可落到未知的凶戾；狭路相逢不在落点范围内。
+const std::vector<NodeType> BattleTargetTypes = {
+    NodeType::BattleNormal, NodeType::BattleElite, NodeType::BattleBoss, NodeType::BattleSavage, NodeType::HideBattle,
+};
+
+const std::vector<NodeType> IncidentTargetTypes = {
+    NodeType::Incident,
+};
+
 bool same_edge(const Edge& lhs, const Edge& rhs) noexcept
 {
     return lhs.first == rhs.first && lhs.second == rhs.second;
@@ -114,7 +129,7 @@ std::size_t GridPositionHash::operator()(const GridPosition& position) const noe
 
 std::optional<NodeId> make_stable_node_id(int floor, GridPosition position) noexcept
 {
-    if (floor < 0 || floor > 65534) {
+    if (floor < 0 || floor > 65'534) {
         return std::nullopt;
     }
     bool valid = true;
@@ -391,6 +406,9 @@ bool NormalizedMap::merge(const MapObservationBatch& batch, std::string* error)
         if (observed.identity_revealed.has_value() && !preserve_door_identity) {
             node.identity_revealed = *observed.identity_revealed;
         }
+        if (observed.identity_from_template.has_value() && !preserve_door_identity) {
+            node.identity_from_template = *observed.identity_from_template;
+        }
         if (observed.marker_type.has_value()) {
             node.marker_type = *observed.marker_type;
         }
@@ -527,14 +545,48 @@ bool NormalizedMap::merge(const MapObservationBatch& batch, std::string* error)
     for (const Edge& edge : missing_edges) {
         working.m_snapshot.upsert_edge(edge);
     }
+    working.finalize_revision(m_snapshot);
     *this = std::move(working);
     return true;
+}
+
+void NormalizedMap::finalize_revision(const MapSnapshot& previous)
+{
+    // 合并和节点结算完成后，整次更新只根据最终地图决定是否增加一个版本。
+    const bool changed = m_snapshot.nodes() != previous.nodes() || m_snapshot.edges() != previous.edges();
+    m_snapshot.revision = previous.revision + (changed ? 1 : 0);
 }
 
 void NormalizedMap::reset()
 {
     m_floor = 0;
     m_snapshot = MapSnapshot {};
+}
+
+bool NormalizedMap::accept_preview(NodeId target, const MovePreview& preview, bool& changed, std::string* error)
+{
+    changed = false;
+    const Node* current = m_snapshot.find_node(target);
+    if (current == nullptr) {
+        if (error != nullptr) {
+            *error = "preview target is absent from the map";
+        }
+        return false;
+    }
+    if (!preview.identity_revealed || preview.displayed_type == NodeType::Unknown) {
+        return true;
+    }
+    Node node = *current;
+    if (node.type != preview.displayed_type && node.progress == NodeProgress::Active) {
+        node.traversal = default_traversal_for(preview.displayed_type);
+    }
+    node.type = preview.displayed_type;
+    node.name = preview.displayed_name;
+    node.identity_state = NodeIdentityState::Classified;
+    node.identity_revealed = true;
+    node.identity_from_template = false;
+    changed = node != *current;
+    return m_snapshot.upsert_node(std::move(node));
 }
 
 void ViewportObservation::replace(
@@ -644,6 +696,11 @@ std::optional<NodeType> node_type_from_string(std::string_view value) noexcept
 bool node_type_allowed(const MovementSpec& movement, NodeType type) noexcept
 {
     return std::ranges::find(movement.target_types, type) != movement.target_types.end();
+}
+
+bool movement_can_land(const MovementSpec& movement, NodeType type, bool identity_from_template) noexcept
+{
+    return node_type_allowed(movement, type) && (movement.kind != MovementKind::M13 || !identity_from_template);
 }
 
 const std::vector<NodeType>& all_target_node_types() noexcept
@@ -775,6 +832,47 @@ const std::vector<MovementSpec>& movement_specs()
           false,
           false,
           { 3, 0, 0 } },
+        { MovementKind::M13,
+          "rogue_6_scrap_M_13",
+          "紧急逃生座椅",
+          MovementRange::FullMap,
+          ExitTargetTypes,
+          1,
+          1,
+          false,
+          false,
+          {} },
+        { MovementKind::M14,
+          "rogue_6_scrap_M_14",
+          "力反馈方向盘",
+          MovementRange::SameRowOrColumn,
+          AllTargetTypes,
+          1,
+          2,
+          false,
+          false,
+          {} },
+        { MovementKind::M15,
+          "rogue_6_scrap_M_15",
+          "鸣笛",
+          MovementRange::ManhattanTwo,
+          BattleTargetTypes,
+          1,
+          1,
+          false,
+          false,
+          {} },
+        { MovementKind::M16,
+          "rogue_6_scrap_M_16",
+          "坎诺特特快",
+          MovementRange::FullMap,
+          IncidentTargetTypes,
+          1,
+          1,
+          false,
+          false,
+          {},
+          NodeType::Shop },
     };
     return Specs;
 }
@@ -879,6 +977,8 @@ bool is_in_geometric_range(
         return (row_delta == 0 || column_delta == 0) && row_delta + column_delta <= 3;
     case MovementRange::FullMap:
         return true;
+    case MovementRange::SameRowOrColumn:
+        return row_delta == 0 || column_delta == 0;
     }
     return false;
 }
@@ -1002,7 +1102,7 @@ std::vector<MoveAction> enumerate_move_actions(const MapSnapshot& map, const Run
     }
 
     for (const auto& movement : movement_specs()) {
-        if (movement.kind == MovementKind::Walk) {
+        if (movement.kind == MovementKind::Walk || movement.landing_type_after_move.has_value()) {
             continue;
         }
         const auto charge = state.resources.movement_charges.find(movement.kind);
@@ -1017,7 +1117,8 @@ std::vector<MoveAction> enumerate_move_actions(const MapSnapshot& map, const Run
             const bool targetable = target_type == NodeType::Empty
                                         ? effective_progress(node, state) != NodeProgress::Removed
                                         : is_targetable(node, state);
-            if (id == state.current_node || !targetable || !node_type_allowed(movement, target_type) ||
+            if (id == state.current_node || !targetable ||
+                !movement_can_land(movement, target_type, node.identity_from_template) ||
                 !is_in_geometric_range(map, state.current_node, id, movement, GraphLayer::Confirmed)) {
                 continue;
             }
@@ -1229,6 +1330,19 @@ bool MoveTransaction::commit(
         return false;
     }
     m_stage = MoveTransactionStage::Committed;
+    return true;
+}
+
+bool MoveTransaction::resolve_target_type(NodeType type, std::string* error)
+{
+    if (m_stage != MoveTransactionStage::Committed) {
+        if (error != nullptr) {
+            *error = "target type can only change on a committed transaction";
+        }
+        return false;
+    }
+    // 隐藏节点进页面后才知道真实类型；开出险路小径时，目标记成出口才能确认走到了下一层。
+    m_target_type = type;
     return true;
 }
 
