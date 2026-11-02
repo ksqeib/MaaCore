@@ -29,6 +29,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
@@ -116,12 +117,31 @@ try {
     }
 
     Write-Host "Compressing to $zipPath"
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $stagingDir,
-        $zipPath,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $true
-    )
+    $fixedTimestamp = [DateTimeOffset]::new(2000, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+    $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem -LiteralPath $stagingDir -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $relative = $_.FullName.Substring($stagingDir.Length).TrimStart('\', '/') -replace '\\', '/'
+            $entry = $zip.CreateEntry($relative, [System.IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = $fixedTimestamp
+            $fileStream = [System.IO.File]::OpenRead($_.FullName)
+            try {
+                $entryStream = $entry.Open()
+                try {
+                    $fileStream.CopyTo($entryStream)
+                }
+                finally {
+                    $entryStream.Dispose()
+                }
+            }
+            finally {
+                $fileStream.Dispose()
+            }
+        }
+    }
+    finally {
+        $zip.Dispose()
+    }
 
     $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $sizeMb = [Math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 1)

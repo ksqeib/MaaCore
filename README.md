@@ -68,7 +68,7 @@ powershell -File .\tools\build-maacore-only.ps1 -UseSccache -NoFresh
 powershell -File .\tools\package-sdk.ps1 -Version v1.0.0
 ```
 
-输出 `dist/MaaCore-sdk-windows-x64-v1.0.0.zip`，包含：
+输出 `dist/MaaCore-sdk-windows-x64-v1.0.0.zip`，**zip 根目录直接是 `bin/` 和 `include/`**，不套版本目录：
 
 ```
 bin/        MaaCore.dll / MaaCore.pdb / MaaUtils.dll / 运行时 DLL（OpenCV、ONNXRuntime、fastdeploy、DirectML）
