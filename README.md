@@ -97,9 +97,11 @@ powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
 
 ## GitHub CI
 
-- 构建工作流：`.github/workflows/maacore-build.yml`（push 到 `main`/`dev`、PR、手动；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
-- 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本，自动构建并发布 SDK zip）
-- 依赖包工作流：`.github/workflows/maacore-deps.yml`（打 `deps-v*` tag 或手动指定版本，自动组装官方依赖、发布 bundle，并提交更新后的 `tools/deps-manifest.json`）
+- 构建工作流：`.github/workflows/maacore-build.yml`（**仅手动 `workflow_dispatch`**；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
+- 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本；发布 SDK zip）
+- 依赖包工作流：`.github/workflows/maacore-deps.yml`（打 `deps-v*` tag 或手动指定版本；发布 bundle，并提交更新后的 `tools/deps-manifest.json`）
+- 上游同步工作流：`.github/workflows/sync_upstream_core.yml`（**仅手动**，不再每日定时运行）
+- 不再在 push / PR 时自动触发构建，避免消耗 Actions 配额
 - CI 已启用 `sccache`，可在日志中查看 `sccache --show-stats`
 - 依赖包按 `tools/deps-manifest.json` 的哈希缓存；未命中时自动下载
 

@@ -16,11 +16,6 @@ on:
         required: false
         default: 0
         type: number
-  push:
-    branches:
-      - main
-      - dev
-  pull_request:
 
 jobs:
   build-windows:
