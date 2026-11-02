@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "v2",
+  "bundleVersion": "v3",
   "targets": {
     "windows-x64": {
-      "url": "https://github.com/ksqeib/MaaCore/releases/download/deps-v2/MaaCore-deps-windows-x64-v2.zip",
-      "sha256": "8f15371c67b57dd5f005713bf2e9fa73ecea6aaf5df2ee2b02063699e6f1dd26"
+      "url": "https://github.com/ksqeib/MaaCore/releases/download/deps-v3/MaaCore-deps-windows-x64-v3.zip",
+      "sha256": "c9ff316ad0cd5dadaaaee68bc4067072ef3db3d8a88e04f3800f70c8b99ffe74"
     }
   }
 }
