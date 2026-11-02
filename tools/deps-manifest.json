@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "bundleVersion": "v1",
+  "targets": {
+    "windows-x64": {
+      "url": "https://github.com/ksqeib/MaaCore/releases/download/deps-v1/MaaCore-deps-windows-x64-v1.zip",
+      "sha256": "27839c44eb655285ef272bfa0c458d2d49ed5c7778fd0354d2d80c0aa619dfff"
+    }
+  }
+}

@@ -1,41 +1,35 @@
 # MaaCore
 
-MAA 底层 C++ 模块
+MAA 底层 C++ 模块。
 
 ## 单仓库独立构建（Windows）
 
-目标仅生成 `MaaCore.dll` 与对应调试符号 `MaaCore.pdb`，不依赖父仓库构建流程。
+目标：产出 `MaaCore.dll` / `MaaCore.pdb`，并可打成供其他启动器集成的 SDK 包，不依赖父仓库构建流程。
 
-### 1) 初始化子模块
+### 1) 准备依赖
 
-```powershell
-git submodule update --init --recursive MaaUtils
-```
+依赖来源只有两处：
 
-### 2) 准备独立构建依赖（本仓库头文件 + MaaDeps）
+- **入库跟踪**：`include/upstream`（对外 API 头）、`include/3rd`（头文件型第三方库）、`MaaUtils/`（源码，随工程编译）
+- **下载得到**：`deps/`（OpenCV / ONNXRuntime / fastdeploy_ppocr / Boost / zlib 预编译产物）
 
-头文件目录约定：
-
-- `include/upstream`：对外 API 头（来自主仓库 `include`）
-- `include/3rd`：编译所需第三方头（来自主仓库 `3rdparty/include`）
-
-如需同步更新头文件：
-
-```powershell
-powershell -File .\tools\sync-includes.ps1
-```
+不再使用 `MaaUtils/MaaDeps` 子模块。`deps/` 由 `tools/deps-manifest.json` 锚定版本与 SHA-256，通过 `tools/fetch-deps.ps1` 获取：
 
 ```powershell
 powershell -File .\tools\bootstrap-standalone.ps1
 ```
 
-该脚本会：
+脚本会校验本仓库头文件、下载并解压 `deps/`，然后做完整性检查。`deps/` 约 130 MB（压缩包），不入库。
 
-- 初始化 `MaaUtils` 子模块
-- 校验本仓库 `include/upstream` 与 `include/3rd` 关键头文件存在
-- 下载 MaaDeps 到 `MaaUtils/MaaDeps`
+如需同步 `include/` 头文件：
 
-### 3) 编译 MaaCore
+```powershell
+powershell -File .\tools\sync-includes.ps1
+```
+
+> 机制说明见 `docs/remove-maadeps.md`，依赖引用见 `docs/compile/maacore-standalone-dependency-notes.md`。
+
+### 2) 编译 MaaCore
 
 ```powershell
 powershell -File .\tools\build-maacore-only.ps1
@@ -60,6 +54,31 @@ powershell -File .\tools\build-maacore-only.ps1 -UseSccache -NoFresh
 - `build-standalone/bin/RelWithDebInfo/MaaCore.dll`
 - `build-standalone/bin/RelWithDebInfo/MaaCore.pdb`
 
+### 3) 打 SDK 发布包
+
+```powershell
+powershell -File .\tools\package-sdk.ps1 -Version v1.0.0
+```
+
+输出 `dist/MaaCore-sdk-windows-x64-v1.0.0.zip`，包含：
+
+```
+bin/        MaaCore.dll / MaaCore.pdb / MaaUtils.dll / 运行时 DLL（OpenCV、ONNXRuntime、fastdeploy、DirectML）
+include/    对外 API 头文件
+README.md   集成说明
+```
+
+默认不包含 174 MB 的 CUDA provider；需要时加 `-IncludeCuda`（前提是本地 `deps/runtime/maa-x64-windows/` 里已有该文件）。`resource/` 由启动器自行分发，不打进 SDK。
+
+### 维护依赖包
+
+```powershell
+# 修改 deps/ 后重新打包，并更新 tools/deps-manifest.json 中的 URL / sha256
+powershell -File .\tools\pack-deps.ps1 -UpdateManifest
+```
+
+生成的 `dist/MaaCore-deps-windows-x64-v1.zip` 上传到 tag 为 `deps-v1` 的 GitHub Release 即可。
+
 ### 依赖引用说明
 
 - `docs/compile/maacore-standalone-dependency-notes.md`
@@ -68,15 +87,12 @@ powershell -File .\tools\build-maacore-only.ps1 -UseSccache -NoFresh
 
 - `agent.md`
 
-## GitHub CI 产物下载
+## GitHub CI
 
-- 工作流文件：`.github/workflows/maacore-build.yml`
-- 触发方式：`push` 到 `main`、`pull_request`、手动 `workflow_dispatch`
-- `workflow_dispatch` 可选构建配置：`Debug`（默认，速度更快）或 `RelWithDebInfo`
-- `workflow_dispatch` 可选构建并发：`0` 表示自动使用 GitHub runner 的逻辑处理器数量，也可以手动指定
-- CI 已启用 `sccache`（重复构建更快），可在日志中查看 `sccache --show-stats`
-- CI 仅构建并上传：`MaaCore.dll`、`MaaCore.pdb`
-- 不创建 Release，可在 Actions 页面直接下载 Artifact：`MaaCore-windows-x64-<Config>`
+- 构建工作流：`.github/workflows/maacore-build.yml`（push / PR / 手动，产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
+- 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本，自动构建并发布 SDK zip）
+- CI 已启用 `sccache`，可在日志中查看 `sccache --show-stats`
+- 依赖包按 `tools/deps-manifest.json` 的哈希缓存；未命中时自动下载
 
 ## 本机启用 sccache
 
@@ -104,4 +120,3 @@ sccache --zero-stats
 powershell -ExecutionPolicy Bypass -File ".\tools\build-maacore-only.ps1" -SkipBootstrap -UseSccache -NoFresh
 sccache --show-stats
 ```
-

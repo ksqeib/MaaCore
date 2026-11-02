@@ -18,7 +18,14 @@ if(INSTALL_FLATTEN)
         PUBLIC_HEADER DESTINATION .)
 endif()
 
-# MaaUtils.cmake wires MaaDeps + find_package + MaaUtils target for standalone builds.
+# Dependency layout:
+#   deps/      prebuilt third-party binaries (OpenCV / ONNXRuntime / fastdeploy / Boost / zlib)
+#              Provisioned by tools/fetch-deps.ps1 from a pinned release asset; not tracked.
+#   MaaUtils/  vendored source, built in-tree as a shared library.
+set(MAADEPS_DIR "${PROJECT_SOURCE_DIR}/deps" CACHE PATH "Directory holding prebuilt MaaCore dependencies")
+set(DEP_DEPS_DIR "${MAADEPS_DIR}")
+set(MAA_DEPS_CONFIG "${PROJECT_SOURCE_DIR}/cmake/maadeps.cmake")
+
 include(${PROJECT_SOURCE_DIR}/MaaUtils/MaaUtils.cmake)
 
 add_library(HeaderOnlyLibraries INTERFACE)

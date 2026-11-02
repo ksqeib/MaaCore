@@ -1,6 +1,7 @@
 param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
-    [switch]$SkipMaaDepsDownload
+    [string]$DepsTarget = "",
+    [switch]$ForceDepsDownload
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,10 +27,6 @@ function Invoke-Step {
     & $Action
 }
 
-Invoke-Step "Init MaaUtils submodule" {
-    Invoke-External -FilePath "git" -Arguments @("-C", $RepoRoot, "submodule", "update", "--init", "--recursive", "MaaUtils")
-}
-
 Invoke-Step "Validate local headers" {
     $requiredPaths = @(
         (Join-Path $RepoRoot "include\upstream\AsstCaller.h"),
@@ -47,24 +44,29 @@ Invoke-Step "Validate local headers" {
     }
 }
 
-if (-not $SkipMaaDepsDownload) {
-    Invoke-Step "Ensure MaaDeps is ready" {
-        $maadepsCmakePath = Join-Path $RepoRoot "MaaUtils\MaaDeps\maadeps.cmake"
-        $tripletPath = Join-Path $RepoRoot "MaaUtils\MaaDeps\vcpkg\installed\maa-x64-windows"
+Invoke-Step "Ensure prebuilt dependencies" {
+    $fetchArgs = @{
+        RepoRoot     = $RepoRoot
+        ManifestPath = (Join-Path $PSScriptRoot "deps-manifest.json")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DepsTarget)) {
+        $fetchArgs.Target = $DepsTarget
+    }
+    if ($ForceDepsDownload) {
+        $fetchArgs.Force = $true
+    }
 
-        if ((-not (Test-Path $maadepsCmakePath)) -or (-not (Test-Path $tripletPath))) {
-            Invoke-External -FilePath "python" -Arguments @((Join-Path $RepoRoot "tools\maadeps-download.py"))
-        }
-        else {
-            Write-Host "MaaDeps already exists at $tripletPath"
-        }
+    & (Join-Path $PSScriptRoot "fetch-deps.ps1") @fetchArgs
 
-        if (-not (Test-Path $maadepsCmakePath)) {
-            throw "MaaDeps bootstrap finished but maadeps.cmake was not found: $maadepsCmakePath"
-        }
-
-        if (-not (Test-Path $tripletPath)) {
-            throw "MaaDeps bootstrap finished but installed triplet was not found: $tripletPath"
+    $requiredPaths = @(
+        (Join-Path $RepoRoot "deps\include"),
+        (Join-Path $RepoRoot "deps\lib"),
+        (Join-Path $RepoRoot "deps\share"),
+        (Join-Path $RepoRoot "deps\runtime\maa-x64-windows")
+    )
+    foreach ($requiredPath in $requiredPaths) {
+        if (-not (Test-Path $requiredPath)) {
+            throw "Dependency bundle is incomplete, missing: $requiredPath"
         }
     }
 }

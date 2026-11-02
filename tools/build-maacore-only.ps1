@@ -7,8 +7,7 @@ param(
     [int]$Parallel = 0,
     [switch]$NoFresh,
     [switch]$UseSccache,
-    [switch]$SkipBootstrap,
-    [switch]$SkipMaaDepsDownload
+    [switch]$SkipBootstrap
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,10 +81,6 @@ if (-not $SkipBootstrap) {
             "-File", (Join-Path $RepoRoot "tools\bootstrap-standalone.ps1"),
             "-RepoRoot", $RepoRoot
         )
-
-        if ($SkipMaaDepsDownload) {
-            $bootstrapArgs += "-SkipMaaDepsDownload"
-        }
 
         Invoke-External -FilePath "powershell.exe" -Arguments $bootstrapArgs
     }

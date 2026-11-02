@@ -28,16 +28,20 @@
 /debug/
 /tarball/
 /x-tools/
-/MaaUtils/MaaDeps/runtime/
-/MaaUtils/MaaDeps/tarball/
-/MaaUtils/MaaDeps/vcpkg/buildtrees/
-/MaaUtils/MaaDeps/vcpkg/downloads/
-/MaaUtils/MaaDeps/vcpkg/packages/
-/MaaUtils/MaaDeps/vcpkg/installed/
+
+# MaaUtils is vendored in-tree (source tracked). Its upstream MaaDeps download
+# cache is not used by this repo and must never be committed.
+/MaaUtils/MaaDeps/
 
 # Standalone bootstrap cache and generated asset mirror
 _upstream/
 .bootstrap/
+
+# Vendored (repo-local) prebuilt dependencies
+/deps/
+
+# Packaged release artifacts
+/dist/
 
 # Optional local mirrors / backups
 /3rdparty/include._bak/
@@ -46,6 +50,8 @@ _upstream/
 # Python
 __pycache__/
 *.pyc
+
+patch
 
 # Windows explorer / misc
 Thumbs.db

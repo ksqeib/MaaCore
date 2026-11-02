@@ -35,12 +35,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          submodules: recursive
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Setup sccache
         uses: taiki-e/install-action@v2
@@ -55,17 +49,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-${{ env.BUILD_CONFIG }}-
 
-      - name: Cache MaaDeps
+      - name: Cache prebuilt dependencies
         uses: actions/cache@v4
         with:
-          path: |
-            MaaUtils/MaaDeps/maadeps.cmake
-            MaaUtils/MaaDeps/runtime/maa-x64-windows
-            MaaUtils/MaaDeps/tarball
-            MaaUtils/MaaDeps/vcpkg/installed/maa-x64-windows
-          key: maadeps-${{ runner.os }}-v2.14.1-standalone-v2
+          path: deps
+          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json') }}
           restore-keys: |
-            maadeps-${{ runner.os }}-v2.14.1-
+            maacore-deps-${{ runner.os }}-
 
       - name: Cache CMake build directory
         uses: actions/cache@v4
