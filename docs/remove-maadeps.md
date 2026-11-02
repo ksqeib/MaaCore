@@ -105,6 +105,23 @@ powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
 - SHA-256：`c9ff316ad0cd5dadaaaee68bc4067072ef3db3d8a88e04f3800f70c8b99ffe74`
 - URL：`https://github.com/ksqeib/MaaCore/releases/download/deps-v3/MaaCore-deps-windows-x64-v3.zip`
 
+## 发布 SDK
+
+```powershell
+powershell -File .\tools\package-sdk.ps1 -Version v0.1.1
+```
+
+产物 `dist/MaaCore-sdk-windows-x64-v0.1.1.zip` 的**根目录直接是 `bin/` 和 `include/`**，不套版本目录，方便启动器/脚本直接解压识别：
+
+```
+bin/        MaaCore.dll / MaaCore.pdb / MaaUtils.dll / 运行时 DLL
+include/    对外 API 头文件
+README.md   集成说明
+LICENSE.md
+```
+
+CI 中由 `.github/workflows/maacore-release.yml` 在 `v*` tag 或手动触发时自动完成构建和发布。
+
 ## 关于 MaaDeps 的 patch
 
 这些 patch 已全部不再使用：
