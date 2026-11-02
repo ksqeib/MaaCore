@@ -82,10 +82,10 @@ README.md   集成说明
 
 ```powershell
 # 修改 deps/ 后重新打包，并更新 tools/deps-manifest.json 中的 URL / sha256
-powershell -File .\tools\pack-deps.ps1 -BundleVersion v2 -UpdateManifest
+powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
 ```
 
-生成的 `dist/MaaCore-deps-windows-x64-v2.zip` 上传到 tag 为 `deps-v2` 的 GitHub Release 即可。
+生成的 `dist/MaaCore-deps-windows-x64-v3.zip` 上传到 tag 为 `deps-v3` 的 GitHub Release 即可。
 
 ### 依赖引用说明
 

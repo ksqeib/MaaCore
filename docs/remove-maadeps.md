@@ -14,7 +14,7 @@
 - FastDeploy 1.0.7 是唯一没有匹配上游 Windows 预编译包的组件；沿用现有 `fastdeploy_ppocr_maa.dll`（Windows 上本身没有 MaaDeps 源码 patch）。
 - `MaaUtils` 以源码形式 vendored 在仓库中，随工程编译。
 - 依赖包通过 `tools/deps-manifest.json` 锚定 URL + SHA-256，由 `tools/fetch-deps.ps1` 下载。
-- 当前发布包：`MaaCore-deps-windows-x64-v2.zip`（约 195 MB）。
+- 当前发布包：`MaaCore-deps-windows-x64-v3.zip`（约 195 MB）。
 - 实测通过：Release / Debug 构建、`AsstLoadResource` / `AsstCreate`、FastDeploy OCR 推理、ONNXRuntime 会话、Boost.Process 子进程。
 
 ## 目录与职责
@@ -94,16 +94,16 @@ FastDeploy 没有官方 Windows 预编译包可用，脚本按以下顺序取用
 ## 发布依赖包
 
 ```powershell
-powershell -File .\tools\pack-deps.ps1 -BundleVersion v2 -UpdateManifest
+powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
 ```
 
-生成 `dist/MaaCore-deps-windows-x64-v2.zip`，上传到 tag 为 `deps-v2` 的 GitHub Release，再提交 `tools/deps-manifest.json`。
+生成 `dist/MaaCore-deps-windows-x64-v3.zip`，上传到 tag 为 `deps-v3` 的 GitHub Release，再提交 `tools/deps-manifest.json`。
 
-`pack-deps.ps1` 使用固定时间戳和排序后的条目写 zip，同一份输入会得到同一个 SHA-256。当前 v2 包：
+`pack-deps.ps1` 使用固定时间戳和排序后的条目写 zip，同一份输入会得到同一个 SHA-256。当前 v3 包：
 
 - 大小：约 195 MB
-- SHA-256：`8f15371c67b57dd5f005713bf2e9fa73ecea6aaf5df2ee2b02063699e6f1dd26`
-- URL：`https://github.com/ksqeib/MaaCore/releases/download/deps-v2/MaaCore-deps-windows-x64-v2.zip`
+- SHA-256：`c9ff316ad0cd5dadaaaee68bc4067072ef3db3d8a88e04f3800f70c8b99ffe74`
+- URL：`https://github.com/ksqeib/MaaCore/releases/download/deps-v3/MaaCore-deps-windows-x64-v3.zip`
 
 ## 关于 MaaDeps 的 patch
 
