@@ -22,7 +22,9 @@ No GUI, packaging of `resource/`, or runtime functional validation is required i
 - Keep required third-party headers in `include/3rd/` (tracked in this repo).
 - Keep `MaaUtils/` source vendored and build it in-tree (no git submodule).
 - Provide binary deps through `deps/`, pinned by `tools/deps-manifest.json` (URL + SHA-256) and fetched by `tools/fetch-deps.ps1`.
+- `deps/` is assembled from upstream official artifacts by `tools/build-upstream-deps.ps1`; do not apply MaaDeps patches.
 - Do not reintroduce `MaaUtils/MaaDeps` as a submodule or download path.
+- The only non-upstream binary is the current FastDeploy `fastdeploy_ppocr` build (no matching upstream Windows package).
 
 ## Build Contract
 

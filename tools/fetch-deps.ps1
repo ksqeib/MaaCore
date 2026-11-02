@@ -155,6 +155,23 @@ if (-not $Force -and (Test-Path $markerPath)) {
     }
 }
 
+# A locally assembled deps/ tree (tools/build-upstream-deps.ps1) has no bundle
+# marker. Do not overwrite it just because the manifest changed; -Force does.
+if (-not $Force -and (-not (Test-Path $markerPath))) {
+    $requiredPaths = @("include", "lib", "share", "runtime\maa-x64-windows")
+    $complete = $true
+    foreach ($relative in $requiredPaths) {
+        if (-not (Test-Path (Join-Path $depsDir $relative))) {
+            $complete = $false
+            break
+        }
+    }
+    if ($complete) {
+        Write-Host "Existing deps/ found without a bundle marker; assuming it is ready. Use -Force to re-download."
+        return
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($CacheDir)) {
     $CacheDir = Join-Path $RepoRoot ".bootstrap\deps"
 }

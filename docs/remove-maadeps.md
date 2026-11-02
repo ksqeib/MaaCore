@@ -1,36 +1,49 @@
 # 移除 MaaDeps 依赖（de-MaaDeps）
 
-本文记录本仓库如何彻底脱离 `MaaUtils/MaaDeps` 子模块，以及现在依赖从哪里来、怎么发版。
+本文记录本仓库如何脱离 `MaaUtils/MaaDeps`，改用**上游官方二进制 + 官方源码**提供依赖，以及当前的发布流程。
 
 ## 结论速览
 
-MaaDeps 本身不产出代码，它只是一个「从 GitHub Release 下载 vcpkg 预编译包，再把 CMake 的 `find_package` 指过去」的下载器。因此移除它不是让依赖消失，而是**换一个受控的二进制来源**：
-
-| 项目 | 原来 | 现在 |
-|---|---|---|
-| 二进制依赖 | `MaaUtils/MaaDeps` 子模块内下载，约 3.6 GB | `deps/` 目录，由本仓库发布的一个约 130 MB 压缩包解压 |
-| 依赖版本锚点 | git 子模块指针 | `tools/deps-manifest.json` 里的 URL + SHA-256 |
-| MaaUtils | git 子模块，随工程从源码编译 | **源码 vendored 在 `MaaUtils/`，仍从源码编译** |
-| 下载脚本 | `MaaUtils/tools/maadeps_download.py` | `tools/fetch-deps.ps1` |
-| 发版产物 | 只有 CI artifact（`MaaCore.dll/pdb`） | SDK zip：`bin/` + `include/` + README |
+- 二进制依赖不再来自 MaaDeps，也不再应用 MaaDeps 的自定义 patch。
+- `deps/` 由 `tools/build-upstream-deps.ps1` 从官方发布物组装：
+  - OpenCV 4.12.0（官方 Windows 包）
+  - ONNXRuntime 1.19.2 DirectML（官方 NuGet）
+  - DirectML 1.15.4（官方 NuGet）
+  - Boost 1.89.0（官方源码，仅编译 Regex）
+  - zlib 1.3.1（官方源码，静态库）
+- FastDeploy 1.0.7 是唯一没有匹配上游 Windows 预编译包的组件；沿用现有 `fastdeploy_ppocr_maa.dll`（Windows 上本身没有 MaaDeps 源码 patch）。
+- `MaaUtils` 以源码形式 vendored 在仓库中，随工程编译。
+- 依赖包通过 `tools/deps-manifest.json` 锚定 URL + SHA-256，由 `tools/fetch-deps.ps1` 下载。
+- 当前发布包：`MaaCore-deps-windows-x64-v2.zip`（约 195 MB）。
+- 实测通过：Release / Debug 构建、`AsstLoadResource` / `AsstCreate`、FastDeploy OCR 推理、ONNXRuntime 会话、Boost.Process 子进程。
 
 ## 目录与职责
 
 ```
-deps/                        不入库；由 fetch-deps.ps1 解压得到
-├── include/                 编译期头文件（OpenCV / ONNX / fastdeploy / Boost / zlib ...）
-├── lib/                     链接库
-├── bin/                     少量构建期 DLL
-├── share/                   各库的 CMake config（135 个包）
-├── debug/                   Debug 配置的 lib/bin
-└── runtime/maa-x64-windows/ 运行时 DLL
+deps/                        不入库；由 fetch-deps.ps1 或 build-upstream-deps.ps1 生成
+├── include/                 OpenCV / ONNXRuntime / FastDeploy / Boost / zlib 头文件
+├── lib/                     Release 导入库 / 静态库
+│   ├── opencv_world4.lib       从官方 DLL 生成的导入库（指向 opencv_world4_maa.dll）
+│   ├── onnxruntime.lib         从官方 DLL 生成的导入库（指向 onnxruntime_maa.dll）
+│   ├── boost_regex.lib         官方源码编译
+│   ├── zlib.lib                官方源码编译（静态）
+│   └── cmake/                  OpenCV / Boost 的自定义 CONFIG 文件
+├── bin/                     Release DLL
+├── debug/                   Debug 库/DLL
+├── share/                   FastDeploy 的 CMake config
+└── runtime/maa-x64-windows/ 构建产物复制用运行时 DLL（含 msvc-debug/）
 
-MaaUtils/                    入库，源码
-cmake/maadeps.cmake          入库，CMake 适配层（triplet + maadeps_install）
+MaaUtils/                    入库，源码，随工程编译
+cmake/
+├── maadeps.cmake            CMake 适配层（triplet、maadeps_install、OpenCV/ZLIB 路径）
+└── upstream/
+    ├── OpenCVConfig.cmake   官方 OpenCV + _maa 命名适配
+    └── BoostConfig.cmake    官方 Boost + 编译宏
 tools/
 ├── deps-manifest.json       依赖包清单（URL + sha256 + 版本）
 ├── fetch-deps.ps1           下载 / 校验 / 解压依赖包
-├── pack-deps.ps1            把本地 deps/ 打成可发布压缩包
+├── build-upstream-deps.ps1  从官方发布物重新组装 deps/
+├── pack-deps.ps1            把 deps/ 打成可发布压缩包
 ├── bootstrap-standalone.ps1 构建前统一入口
 └── package-sdk.ps1          打 SDK 发布包
 ```
@@ -38,7 +51,7 @@ tools/
 ## 首次构建
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\bootstrap-standalone.ps1   # 下载 deps/
+powershell -ExecutionPolicy Bypass -File .\tools\bootstrap-standalone.ps1
 powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 -SkipBootstrap -UseSccache -NoFresh
 ```
 
@@ -49,77 +62,77 @@ powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 -SkipBoo
 3. 否则下载到 `.bootstrap/deps/`，校验 SHA-256 后解压到仓库根目录；
 4. 解压后再校验 `include/`、`lib/`、`share/`、`runtime/maa-x64-windows/` 是否齐全。
 
-## 依赖包怎么来、怎么更新
-
-依赖包是从现有 MaaDeps v2.14.1 的产物里裁出来的最小集合，不是 vcpkg 现场构建：
+## 从官方源码/发布物重建 deps
 
 ```powershell
-# 1) 准备好一份可用的 deps/（本地已有则跳过）
-powershell -File .\tools\bootstrap-standalone.ps1
+# 本地已有 deps/ 时，FastDeploy 会自动从旧 deps 复制
+powershell -File .\tools\build-upstream-deps.ps1
 
-# 2) 打包；默认剔除 CUDA provider（约 170 MB），保留 DirectML
-powershell -File .\tools\pack-deps.ps1 -UpdateManifest
+# 指定 FastDeploy 来源
+powershell -File .\tools\build-upstream-deps.ps1 -FastDeployFrom C:\path\to\deps
 
-# 3) 上传 dist/MaaCore-deps-windows-x64-v1.zip 到 tag 为 deps-v1 的 GitHub Release
-#    （或 gh release create deps-v1 dist\MaaCore-deps-windows-x64-v1.zip ...）
-
-# 4) 提交更新后的 tools/deps-manifest.json
+# 强制重新下载
+powershell -File .\tools\build-upstream-deps.ps1 -Force
 ```
 
-`pack-deps.ps1` 使用固定时间戳和排序后的条目写 zip，**同一份输入会得到同一个 SHA-256**，便于校验。
+脚本会：
 
-升级依赖时：改 `-BundleVersion v2`、上传到 `deps-v2`、再 `-UpdateManifest`，最后提交 manifest。
+1. 下载并校验官方 OpenCV / ORT / DirectML / Boost / zlib（带固定 SHA-256）；
+2. 解压 OpenCV SFX、NuGet 包和源码包；
+3. 用 CMake 编译 zlib 的 Release/Debug 静态库；
+4. 用 CMake 编译 Boost.Regex 的 Release/Debug 静态库；
+5. 从官方 OpenCV/ORT DLL 生成 `_maa` 命名的导入库；
+6. 组装 `deps/`（含 Debug 配置）；
+7. 复制 `cmake/upstream/` 下的 CMake config。
 
-## MaaUtils 为什么改回源码
+FastDeploy 没有官方 Windows 预编译包可用，脚本按以下顺序取用：
 
-上一版尝试把 `MaaUtils` 当预编译 DLL 消费，但会带来两个问题：
+1. `-FastDeployFrom`；
+2. 现有 `deps/include/fastdeploy`；
+3. 下载上一个依赖包（`-FastDeployUrl`）。
 
-- 需要手工准备 `MaaUtils.dll/lib`，新克隆和 CI 都容易缺件；
-- MaaCore 与 MaaUtils 的 ABI 需要人工对齐。
-
-MaaUtils 源码只有约 300 KB，vendored 进来后 `add_subdirectory` 从源码编译，问题消失。它对依赖的要求仍然通过 `MAADEPS_DIR` 指向 `deps/`：
-
-```cmake
-set(MAADEPS_DIR "${PROJECT_SOURCE_DIR}/deps")
-set(DEP_DEPS_DIR "${MAADEPS_DIR}")
-set(MAA_DEPS_CONFIG "${PROJECT_SOURCE_DIR}/cmake/maadeps.cmake")
-include(${PROJECT_SOURCE_DIR}/MaaUtils/MaaUtils.cmake)
-```
-
-`MaaUtils.cmake` 里的 `if(NOT DEFINED MAADEPS_DIR)` 钩子保留，方便单独使用 MaaUtils 时不破坏默认行为；`MAA_DEPS_CONFIG` 未定义时会回退到 `MaaDeps/maadeps.cmake`。
-
-## 发布 SDK
+## 发布依赖包
 
 ```powershell
-powershell -File .\tools\package-sdk.ps1 -Version v1.0.0
+powershell -File .\tools\pack-deps.ps1 -BundleVersion v2 -UpdateManifest
 ```
 
-产物 `dist/MaaCore-sdk-windows-x64-v1.0.0.zip`：
+生成 `dist/MaaCore-deps-windows-x64-v2.zip`，上传到 tag 为 `deps-v2` 的 GitHub Release，再提交 `tools/deps-manifest.json`。
 
-```
-MaaCore-sdk-windows-x64-v1.0.0/
-├── bin/
-│   ├── MaaCore.dll / MaaCore.pdb
-│   ├── MaaUtils.dll / MaaUtils.pdb
-│   ├── opencv_world4_maa.dll
-│   ├── onnxruntime_maa.dll
-│   ├── onnxruntime_providers_shared_maa.dll
-│   ├── fastdeploy_ppocr_maa.dll
-│   └── DirectML.dll
-├── include/            AsstCaller.h / AsstCallerExtra.h / AsstPort.h / MaaCore.h
-├── README.md           集成说明（tools/sdk/README.md）
-└── LICENSE.md
-```
+`pack-deps.ps1` 使用固定时间戳和排序后的条目写 zip，同一份输入会得到同一个 SHA-256。当前 v2 包：
 
-- 默认**不含** `onnxruntime_providers_cuda.dll`（174 MB），需要时加 `-IncludeCuda`；此时 `deps/runtime/maa-x64-windows/` 里必须先放回该文件（发布用的依赖包里没有它）。
-- `resource/` 不在包内：它随游戏版本更新，应由启动器自行分发。
+- 大小：约 195 MB
+- SHA-256：`8f15371c67b57dd5f005713bf2e9fa73ecea6aaf5df2ee2b02063699e6f1dd26`
+- URL：`https://github.com/ksqeib/MaaCore/releases/download/deps-v2/MaaCore-deps-windows-x64-v2.zip`
 
-CI 见 `.github/workflows/maacore-release.yml`：打 `v*` tag 自动构建、打包并创建 Release；也可手动 `workflow_dispatch` 指定版本。
+## 关于 MaaDeps 的 patch
 
-## 注意与边界
+这些 patch 已全部不再使用：
 
-1. **MaaCore 仍必须依赖 5 个二进制库**：OpenCV、ONNXRuntime、fastdeploy_ppocr、Boost、zlib。本次改的是「从哪拿」，不是「不用」。
-2. **没有从源码重建 ONNXRuntime / FastDeploy**：它们是 MaaDeps 的定制构建，自行编译成本极高；当前方案复用其产物，但由本仓库打包、锚定哈希、独立分发。
-3. **`deps/` 不入库**：`.gitignore` 已忽略 `/deps/`、`/dist/`。首次构建必须联网下载一次依赖包。
-4. **CI 缓存**：缓存键绑定 `tools/deps-manifest.json` 的内容哈希；缓存未命中时 bootstrap 会自动下载。
-5. **升级上游**：`sync_upstream_core.yml` 只同步源码；若上游升级 MaaDeps 版本或 CMake 结构，需要重新裁剪一次 `deps/` 并发布新 bundle。
+| Patch | 处理 |
+|---|---|
+| ORT `revert-pr-21492`（Min/Max NaN） | 不再应用，使用官方 ORT 语义 |
+| ORT 的 CMake / clang / RC / PR 系列 patch | 不需要，直接使用官方二进制 |
+| Boost.Asio `windows_handle_inheritance` | 不再应用 |
+| Boost.Asio `windows_alloca_header` | 不再应用 |
+| Boost.Asio `0001-add-options` | 用 `BOOST_ASIO_DISABLE_BOOST_DATE_TIME` / `BOOST_ASIO_DISABLE_BOOST_CONTEXT_FIBER` 替代 |
+| Boost.Process `opt-filesystem` | 用 `BOOST_PROCESS_USE_STD_FS` 替代 |
+| FastDeploy `float16` | Windows 无关，未应用 |
+| OpenCV / zlib / DirectML | 本来就没有 MaaDeps patch |
+
+保留了三个**适配层**（不是行为 patch）：
+
+1. **`_maa` 命名 + 导入库**
+   官方 DLL 重命名为 `opencv_world4_maa.dll` / `onnxruntime_maa.dll`，导入库由 `dumpbin` + `lib /def` 从官方 DLL 生成。这样 MaaCore 和现成的 FastDeploy DLL 共用同一个模块。
+2. **Boost.Process v1 命名空间**
+   Boost 1.89 单体版把 v1 API 放进 `boost::process::v1`。`MaaUtils/include/MaaUtils/IOStream/BoostIO.hpp` 用 `__has_include(<boost/process/v1.hpp>)` 兼容新旧两种布局。
+3. **FastDeploy**
+   当前没有匹配的上游 Windows 预编译包，暂用现有 DLL；如果需要 100% 自建，需要从 MaaXYZ/FastDeploy 源码用这套官方 OpenCV/ORT 重新编译。
+
+## 风险与边界
+
+1. **ORT Min/Max NaN patch 被去掉**：如果某个模型在 `Min/Max` 中遇到 NaN，结果会与旧 MaaDeps 版不同；当前 OCR/ONNX 测试未触发。
+2. **Boost.Asio socket 继承 patch 被去掉**：PlayTools 的 TCP socket 不再强制 `NO_HANDLE_INHERIT`；子进程侧仍有 MaaUtils 的 `prevent_inherit`。
+3. **FastDeploy 仍是现成二进制**：不是从源码现场编译，但 Windows 上它本来就没有 MaaDeps 源码 patch。
+4. **Debug 依赖已包含**：官方 OpenCV debug DLL、Debug Boost.Regex、Debug zlib、旧 FastDeploy debug DLL 都已打进 deps，Debug 构建可正常链接和加载。
+5. **升级依赖**：修改版本号/URL/SHA-256 后重新跑 `build-upstream-deps.ps1`，再打新的 bundle。

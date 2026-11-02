@@ -22,7 +22,7 @@ include/
   module.modulemap                     Swift / Clang module 定义
 ```
 
-CUDA provider（`onnxruntime_providers_cuda.dll`，约 170 MB）默认不包含；需要 CUDA 推理时请向发布方索取包含该文件的变体。
+CUDA provider（`onnxruntime_providers_cuda.dll`）不包含在本包内；需要 CUDA 推理时请向发布方索取包含该文件的变体。
 
 ## 使用方式
 

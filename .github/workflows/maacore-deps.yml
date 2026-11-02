@@ -1,0 +1,100 @@
+name: Publish MaaCore deps
+
+on:
+  push:
+    tags:
+      - "deps-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Bundle version, for example v3"
+        required: true
+        type: string
+      branch:
+        description: "Branch that receives the manifest update"
+        required: false
+        default: dev
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish-windows-deps:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Resolve version and branch
+        id: vars
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+            $branch = "${{ inputs.branch }}"
+          }
+          else {
+            $version = "${{ github.ref_name }}" -replace '^deps-', ''
+            $branch = "dev"
+          }
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "Empty dependency bundle version" }
+          if ([string]::IsNullOrWhiteSpace($branch)) { $branch = "dev" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "branch=$branch" >> $env:GITHUB_OUTPUT
+          "asset=MaaCore-deps-windows-x64-$version.zip" >> $env:GITHUB_OUTPUT
+          Write-Host "version=$version branch=$branch"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Cache upstream downloads
+        uses: actions/cache@v4
+        with:
+          path: .bootstrap/upstream-deps
+          key: upstream-deps-downloads-${{ runner.os }}-v1
+          restore-keys: |
+            upstream-deps-downloads-${{ runner.os }}-
+
+      - name: Build official dependency tree
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\build-upstream-deps.ps1
+
+      - name: Pack dependency bundle
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\pack-deps.ps1 `
+            -BundleVersion "${{ steps.vars.outputs.version }}" `
+            -UpdateManifest
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MaaCore-deps-${{ steps.vars.outputs.version }}
+          path: dist/${{ steps.vars.outputs.asset }}
+          if-no-files-found: error
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: deps-${{ steps.vars.outputs.version }}
+          name: MaaCore deps ${{ steps.vars.outputs.version }}
+          files: dist/${{ steps.vars.outputs.asset }}
+          make_latest: false
+          generate_release_notes: false
+
+      - name: Commit updated manifest
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tools/deps-manifest.json
+          if (git diff --cached --quiet) {
+            Write-Host "Manifest unchanged; nothing to commit."
+            exit 0
+          }
+          git commit -m "chore(deps): publish ${{ steps.vars.outputs.version }} [skip ci]"
+          git push origin HEAD:${{ steps.vars.outputs.branch }}

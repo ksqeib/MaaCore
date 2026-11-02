@@ -11,15 +11,15 @@ MAA 底层 C++ 模块。
 依赖来源只有两处：
 
 - **入库跟踪**：`include/upstream`（对外 API 头）、`include/3rd`（头文件型第三方库）、`MaaUtils/`（源码，随工程编译）
-- **下载得到**：`deps/`（OpenCV / ONNXRuntime / fastdeploy_ppocr / Boost / zlib 预编译产物）
+- **下载得到**：`deps/`（上游官方 OpenCV / ONNXRuntime / DirectML / Boost / zlib，以及 FastDeploy 预编译产物）
 
-不再使用 `MaaUtils/MaaDeps` 子模块。`deps/` 由 `tools/deps-manifest.json` 锚定版本与 SHA-256，通过 `tools/fetch-deps.ps1` 获取：
+不再使用 `MaaUtils/MaaDeps` 子模块，也不再应用 MaaDeps 的自定义 patch。`deps/` 由 `tools/deps-manifest.json` 锚定版本与 SHA-256，通过 `tools/fetch-deps.ps1` 获取：
 
 ```powershell
 powershell -File .\tools\bootstrap-standalone.ps1
 ```
 
-脚本会校验本仓库头文件、下载并解压 `deps/`，然后做完整性检查。`deps/` 约 130 MB（压缩包），不入库。
+脚本会校验本仓库头文件、下载并解压 `deps/`，然后做完整性检查。`deps/` 约 195 MB（压缩包），不入库。
 
 如需同步 `include/` 头文件：
 
@@ -28,6 +28,14 @@ powershell -File .\tools\sync-includes.ps1
 ```
 
 > 机制说明见 `docs/remove-maadeps.md`，依赖引用见 `docs/compile/maacore-standalone-dependency-notes.md`。
+
+如需从官方发布物重新生成 `deps/`：
+
+```powershell
+powershell -File .\tools\build-upstream-deps.ps1
+```
+
+脚本会下载官方 OpenCV 4.12.0、ONNXRuntime 1.19.2 DirectML、DirectML 1.15.4、Boost 1.89、zlib 1.3.1，编译 Boost.Regex 与 zlib，并从官方 DLL 生成 `_maa` 命名导入库。FastDeploy 会自动从现有 `deps/` 复用。
 
 ### 2) 编译 MaaCore
 
@@ -68,16 +76,16 @@ include/    对外 API 头文件
 README.md   集成说明
 ```
 
-默认不包含 174 MB 的 CUDA provider；需要时加 `-IncludeCuda`（前提是本地 `deps/runtime/maa-x64-windows/` 里已有该文件）。`resource/` 由启动器自行分发，不打进 SDK。
+默认不包含 CUDA provider；需要时把 `onnxruntime_providers_cuda.dll` 放进 `deps/runtime/maa-x64-windows/` 再加 `-IncludeCuda`。`resource/` 由启动器自行分发，不打进 SDK。
 
 ### 维护依赖包
 
 ```powershell
 # 修改 deps/ 后重新打包，并更新 tools/deps-manifest.json 中的 URL / sha256
-powershell -File .\tools\pack-deps.ps1 -UpdateManifest
+powershell -File .\tools\pack-deps.ps1 -BundleVersion v2 -UpdateManifest
 ```
 
-生成的 `dist/MaaCore-deps-windows-x64-v1.zip` 上传到 tag 为 `deps-v1` 的 GitHub Release 即可。
+生成的 `dist/MaaCore-deps-windows-x64-v2.zip` 上传到 tag 为 `deps-v2` 的 GitHub Release 即可。
 
 ### 依赖引用说明
 
@@ -89,8 +97,9 @@ powershell -File .\tools\pack-deps.ps1 -UpdateManifest
 
 ## GitHub CI
 
-- 构建工作流：`.github/workflows/maacore-build.yml`（push / PR / 手动，产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
+- 构建工作流：`.github/workflows/maacore-build.yml`（push 到 `main`/`dev`、PR、手动；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
 - 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本，自动构建并发布 SDK zip）
+- 依赖包工作流：`.github/workflows/maacore-deps.yml`（打 `deps-v*` tag 或手动指定版本，自动组装官方依赖、发布 bundle，并提交更新后的 `tools/deps-manifest.json`）
 - CI 已启用 `sccache`，可在日志中查看 `sccache --show-stats`
 - 依赖包按 `tools/deps-manifest.json` 的哈希缓存；未命中时自动下载
 

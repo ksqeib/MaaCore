@@ -42,6 +42,22 @@ endif()
 # the prebuilt tree.
 list(PREPEND CMAKE_PREFIX_PATH "${DEP_DEPS_DIR}")
 
+# OpenCV: the upstream-binary layout ships a small config that exposes the
+# official DLLs under the historical _maa names. Fall back to whatever CMake
+# finds for other layouts.
+if(EXISTS "${DEP_DEPS_DIR}/lib/cmake/opencv4/OpenCVConfig.cmake")
+  set(OpenCV_DIR "${DEP_DEPS_DIR}/lib/cmake/opencv4" CACHE PATH "OpenCV config for prebuilt dependencies" FORCE)
+endif()
+
+# ZLIB: point both configurations at the vendored static libraries so Debug and
+# Release do not pick up unrelated zlib installations.
+if(EXISTS "${DEP_DEPS_DIR}/lib/zlib.lib")
+  set(ZLIB_LIBRARY_RELEASE "${DEP_DEPS_DIR}/lib/zlib.lib" CACHE FILEPATH "ZLIB release library" FORCE)
+endif()
+if(EXISTS "${DEP_DEPS_DIR}/debug/lib/zlibd.lib")
+  set(ZLIB_LIBRARY_DEBUG "${DEP_DEPS_DIR}/debug/lib/zlibd.lib" CACHE FILEPATH "ZLIB debug library" FORCE)
+endif()
+
 # --- maadeps_install: copy runtime DLLs next to the build output -----
 function(maadeps_install dest)
   if(MSVC)

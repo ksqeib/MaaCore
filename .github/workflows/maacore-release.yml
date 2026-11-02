@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .sccache
-          key: sccache-release-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'Assistant.cpp', 'Assistant.h', 'AsstCaller.cpp', 'AsstCallerExtra.cpp', 'InstHelper.cpp', 'InstHelper.h', 'Status.cpp', 'Status.h', 'Common/**', 'Config/**', 'Controller/**', 'Task/**', 'Ui/**', 'Utils/**', 'Vision/**', 'include/**', 'MaaUtils/**', '.github/workflows/maacore-release.yml') }}
+          key: sccache-release-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'Assistant.cpp', 'Assistant.h', 'AsstCaller.cpp', 'AsstCallerExtra.cpp', 'InstHelper.cpp', 'InstHelper.h', 'Status.cpp', 'Status.h', 'Common/**', 'Config/**', 'Controller/**', 'Task/**', 'Ui/**', 'Utils/**', 'Vision/**', 'include/**', 'MaaUtils/**', 'cmake/**', 'tools/deps-manifest.json', '.github/workflows/maacore-release.yml') }}
           restore-keys: |
             sccache-release-${{ runner.os }}-
 

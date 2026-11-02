@@ -18,7 +18,7 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$DepsDir = "",
     [string]$OutputDir = "",
-    [string]$BundleVersion = "v1",
+    [string]$BundleVersion = "v2",
     [string]$Target = "windows-x64",
     [string]$RepoSlug = "",
     [switch]$IncludeCuda,
