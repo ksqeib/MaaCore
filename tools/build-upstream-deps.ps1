@@ -3,10 +3,14 @@
     Assemble deps/ from upstream official binaries (no MaaDeps, no patches).
 
 .DESCRIPTION
-    Downloads the official OpenCV / ONNXRuntime DirectML / DirectML / Boost / zlib
-    artifacts, builds the two small libraries that need compiling (Boost.Regex and
-    zlib), generates `_maa`-named import libraries from the official DLLs, and lays
+    Downloads the official OpenCV / ONNXRuntime DirectML / Boost / zlib artifacts,
+    builds the two small libraries that need compiling (Boost.Regex and zlib),
+    generates `_maa`-named import libraries from the official DLLs, and lays
     everything out in the layout MaaCore's CMake expects.
+
+    FastDeploy (plus DirectML.dll) is the only component without a matching
+    upstream Windows prebuilt package. It is provided as a small separate bundle:
+    -FastDeployFrom, an existing deps/ tree, or -FastDeployUrl.
 
     FastDeploy is the only component without a matching upstream Windows binary.
     It is copied from -FastDeployFrom when given, otherwise from an existing
@@ -24,7 +28,7 @@ param(
     [string]$DepsDir = "",
     [string]$CacheDir = "",
     [string]$FastDeployFrom = "",
-    [string]$FastDeployUrl = "https://github.com/ksqeib/MaaCore/releases/download/deps-v3/MaaCore-deps-windows-x64-v3.zip",
+    [string]$FastDeployUrl = "https://github.com/ksqeib/MaaCore/releases/download/fastdeploy-v1/MaaCore-fastdeploy-windows-x64-v1.zip",
     [switch]$Force
 )
 
@@ -189,20 +193,24 @@ function Copy-IfExists {
 
 function Resolve-FastDeploySource {
     if (-not [string]::IsNullOrWhiteSpace($FastDeployFrom)) {
-        if (-not (Test-Path (Join-Path $FastDeployFrom "include\fastdeploy"))) {
-            throw "-FastDeployFrom does not look like a deps tree: $FastDeployFrom"
+        if (Test-Path (Join-Path $FastDeployFrom "include\fastdeploy")) {
+            return $FastDeployFrom
         }
-        return $FastDeployFrom
+        $nested = Join-Path $FastDeployFrom "deps"
+        if (Test-Path (Join-Path $nested "include\fastdeploy")) {
+            return $nested
+        }
+        throw "-FastDeployFrom does not contain include/fastdeploy: $FastDeployFrom"
     }
 
     if (Test-Path (Join-Path $DepsDir "include\fastdeploy")) {
         return $DepsDir
     }
 
-    $bundle = Join-Path $CacheDir "previous-deps.zip"
+    $bundle = Join-Path $CacheDir "fastdeploy.zip"
     if (-not (Test-Path $bundle)) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Write-Host "  downloading previous deps bundle for FastDeploy: $FastDeployUrl"
+        Write-Host "  downloading FastDeploy bundle: $FastDeployUrl"
         $client = New-Object System.Net.WebClient
         try {
             if ($env:HTTPS_PROXY) {
@@ -215,11 +223,15 @@ function Resolve-FastDeploySource {
         }
     }
 
-    $extract = Join-Path $staging "previous-deps"
+    $extract = Join-Path $staging "fastdeploy-source"
     Expand-ZipArchive $bundle $extract
-    $root = Join-Path $extract "deps"
+    $root = $extract
+    $nested = Join-Path $extract "deps"
+    if (Test-Path (Join-Path $nested "include\fastdeploy")) {
+        $root = $nested
+    }
     if (-not (Test-Path (Join-Path $root "include\fastdeploy"))) {
-        throw "Previous deps bundle does not contain include/fastdeploy: $bundle"
+        throw "FastDeploy bundle does not contain include/fastdeploy: $bundle"
     }
     return $root
 }
@@ -234,11 +246,6 @@ $assets = @(
         File   = "Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
         Url    = "https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
         Sha256 = "b8086f881f2ba6175c011b1fc9c5bc4cc95543db724a17f52f339c6d2e9a5827"
-    },
-    @{
-        File   = "Microsoft.AI.DirectML.1.15.4.nupkg"
-        Url    = "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.4"
-        Sha256 = "4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9"
     },
     @{
         File   = "boost_1_89_0.tar.gz"
@@ -268,13 +275,11 @@ try {
 
     $opencvExe = Join-Path $CacheDir "opencv-4.12.0-windows.exe"
     $ortNupkg = Join-Path $CacheDir "Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
-    $dmlNupkg = Join-Path $CacheDir "Microsoft.AI.DirectML.1.15.4.nupkg"
     $boostTar = Join-Path $CacheDir "boost_1_89_0.tar.gz"
     $zlibTar = Join-Path $CacheDir "zlib-1.3.1.tar.gz"
 
     $opencvRoot = Join-Path $staging "opencv"
     $ortRoot = Join-Path $staging "ort"
-    $dmlRoot = Join-Path $staging "dml"
     $boostRoot = Join-Path $staging "boost"
     $zlibRoot = Join-Path $staging "zlib"
 
@@ -284,7 +289,6 @@ try {
             throw "OpenCV self-extractor failed with exit code $($process.ExitCode)"
         }
         Expand-ZipArchive $ortNupkg $ortRoot
-        Expand-ZipArchive $dmlNupkg $dmlRoot
         Expand-TarGz $boostTar $boostRoot
         Expand-TarGz $zlibTar $zlibRoot
     }
@@ -293,11 +297,10 @@ try {
     $opencvReleaseDll = Join-Path $opencvBuild "x64\vc16\bin\opencv_world4120.dll"
     $opencvDebugDll = Join-Path $opencvBuild "x64\vc16\bin\opencv_world4120d.dll"
     $ortReleaseDll = Join-Path $ortRoot "runtimes\win-x64\native\onnxruntime.dll"
-    $directmlDll = Join-Path $dmlRoot "bin\x64-win\DirectML.dll"
     $boostSrc = Join-Path $boostRoot "boost_1_89_0"
     $zlibSrc = Join-Path $zlibRoot "zlib-1.3.1"
 
-    foreach ($required in @($opencvReleaseDll, $opencvDebugDll, $ortReleaseDll, $directmlDll, $boostSrc, $zlibSrc)) {
+    foreach ($required in @($opencvReleaseDll, $opencvDebugDll, $ortReleaseDll, $boostSrc, $zlibSrc)) {
         if (-not (Test-Path $required)) {
             throw "Upstream artifact is incomplete, missing: $required"
         }
@@ -305,6 +308,14 @@ try {
 
     $fastDeployRoot = Resolve-FastDeploySource
     Write-Host "==> FastDeploy source: $fastDeployRoot"
+
+    $directmlDll = Join-Path $fastDeployRoot "bin\DirectML.dll"
+    if (-not (Test-Path $directmlDll)) {
+        $directmlDll = Join-Path $fastDeployRoot "DirectML.dll"
+    }
+    if (-not (Test-Path $directmlDll)) {
+        throw "DirectML.dll is not present in the FastDeploy bundle: $fastDeployRoot"
+    }
 
     $zlibBuild = Join-Path $staging "zlib-build"
     $zlibInstall = Join-Path $staging "zlib-install"
@@ -455,7 +466,7 @@ set_target_properties(boost_regex PROPERTIES OUTPUT_NAME boost_regex)
     Write-Host "Upstream dependency tree ready: $DepsDir"
     Write-Host "  OpenCV     4.12.0 official"
     Write-Host "  ONNXRuntime 1.19.2 DirectML official"
-    Write-Host "  DirectML   1.15.4 official"
+    Write-Host "  DirectML   from FastDeploy bundle (official Microsoft binary)"
     Write-Host "  Boost      1.89.0 official source (Regex only)"
     Write-Host "  zlib       1.3.1 official source"
     Write-Host "  FastDeploy from: $fastDeployRoot"

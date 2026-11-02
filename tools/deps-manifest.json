@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "bundleVersion": "v3",
+  "bundleVersion": "v1",
   "targets": {
     "windows-x64": {
-      "url": "https://github.com/ksqeib/MaaCore/releases/download/deps-v3/MaaCore-deps-windows-x64-v3.zip",
-      "sha256": "c9ff316ad0cd5dadaaaee68bc4067072ef3db3d8a88e04f3800f70c8b99ffe74"
+      "url": "https://github.com/ksqeib/MaaCore/releases/download/fastdeploy-v1/MaaCore-fastdeploy-windows-x64-v1.zip",
+      "sha256": "0995ec629595419925f948fd0d0c6df2ab354531c275915fd77ad7f57050431c"
     }
   }
 }

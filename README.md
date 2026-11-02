@@ -11,15 +11,22 @@ MAA 底层 C++ 模块。
 依赖来源只有两处：
 
 - **入库跟踪**：`include/upstream`（对外 API 头）、`include/3rd`（头文件型第三方库）、`MaaUtils/`（源码，随工程编译）
-- **下载得到**：`deps/`（上游官方 OpenCV / ONNXRuntime / DirectML / Boost / zlib，以及 FastDeploy 预编译产物）
+- **下载得到**：`deps/`（OpenCV / ONNXRuntime / Boost / zlib 来自官方固定 URL，FastDeploy 来自一个小型发布包）
 
-不再使用 `MaaUtils/MaaDeps` 子模块，也不再应用 MaaDeps 的自定义 patch。`deps/` 由 `tools/deps-manifest.json` 锚定版本与 SHA-256，通过 `tools/fetch-deps.ps1` 获取：
+不再使用 `MaaUtils/MaaDeps` 子模块，也不再应用 MaaDeps 的自定义 patch：
 
 ```powershell
 powershell -File .\tools\bootstrap-standalone.ps1
 ```
 
-脚本会校验本仓库头文件、下载并解压 `deps/`，然后做完整性检查。`deps/` 约 195 MB（压缩包），不入库。
+首次运行会：
+
+1. 从 `tools/deps-manifest.json` 下载约 15 MB 的 FastDeploy 包（含 `DirectML.dll`）
+2. 从官方固定 URL 下载 OpenCV 4.12.0、ONNXRuntime 1.19.2 DirectML、Boost 1.89、zlib 1.3.1（约 400 MB，缓存到 `.bootstrap/upstream-deps`）
+3. 本地编译 Boost.Regex 与 zlib
+4. 组装 `deps/`
+
+`deps/` 不入库；后续构建直接复用，不会重复下载/编译。
 
 如需同步 `include/` 头文件：
 
@@ -29,13 +36,15 @@ powershell -File .\tools\sync-includes.ps1
 
 > 机制说明见 `docs/remove-maadeps.md`，依赖引用见 `docs/compile/maacore-standalone-dependency-notes.md`。
 
-如需从官方发布物重新生成 `deps/`：
+如需强制从官方发布物重新生成 `deps/`：
 
 ```powershell
+powershell -File .\tools\fetch-deps.ps1 -Force
+# 或
 powershell -File .\tools\build-upstream-deps.ps1
 ```
 
-脚本会下载官方 OpenCV 4.12.0、ONNXRuntime 1.19.2 DirectML、DirectML 1.15.4、Boost 1.89、zlib 1.3.1，编译 Boost.Regex 与 zlib，并从官方 DLL 生成 `_maa` 命名导入库。FastDeploy 会自动从现有 `deps/` 复用。
+脚本会下载/复用官方包，编译 Boost.Regex 与 zlib，并从官方 DLL 生成 `_maa` 命名导入库。FastDeploy 默认来自现有 `deps/` 或 `tools/deps-manifest.json` 指向的小包。
 
 ### 2) 编译 MaaCore
 
@@ -78,14 +87,16 @@ README.md   集成说明
 
 默认不包含 CUDA provider；需要时把 `onnxruntime_providers_cuda.dll` 放进 `deps/runtime/maa-x64-windows/` 再加 `-IncludeCuda`。`resource/` 由启动器自行分发，不打进 SDK。
 
-### 维护依赖包
+### 维护 FastDeploy 包
+
+OpenCV / ONNXRuntime / Boost / zlib 不再整包发布，bootstrap 时直接从官方 URL 下载。只有 FastDeploy 需要一个小的发布包：
 
 ```powershell
-# 修改 deps/ 后重新打包，并更新 tools/deps-manifest.json 中的 URL / sha256
-powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
+# 从现有 deps/ 提取 FastDeploy + DirectML，更新 tools/deps-manifest.json
+powershell -File .\tools\pack-fastdeploy.ps1 -BundleVersion v1 -UpdateManifest
 ```
 
-生成的 `dist/MaaCore-deps-windows-x64-v3.zip` 上传到 tag 为 `deps-v3` 的 GitHub Release 即可。
+生成的 `dist/MaaCore-fastdeploy-windows-x64-v1.zip`（约 15 MB）上传到 tag 为 `fastdeploy-v1` 的 GitHub Release 即可。
 
 ### 依赖引用说明
 
@@ -99,11 +110,10 @@ powershell -File .\tools\pack-deps.ps1 -BundleVersion v3 -UpdateManifest
 
 - 构建工作流：`.github/workflows/maacore-build.yml`（**仅手动 `workflow_dispatch`**；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
 - 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本；发布 SDK zip）
-- 依赖包工作流：`.github/workflows/maacore-deps.yml`（打 `deps-v*` tag 或手动指定版本；发布 bundle，并提交更新后的 `tools/deps-manifest.json`）
 - 上游同步工作流：`.github/workflows/sync_upstream_core.yml`（**仅手动**，不再每日定时运行）
 - 不再在 push / PR 时自动触发构建，避免消耗 Actions 配额
+- CI 会同时缓存 `deps/` 和 `.bootstrap/upstream-deps`；首次未命中时自动下载官方包并编译 Boost.Regex / zlib
 - CI 已启用 `sccache`，可在日志中查看 `sccache --show-stats`
-- 依赖包按 `tools/deps-manifest.json` 的哈希缓存；未命中时自动下载
 
 ## 本机启用 sccache
 

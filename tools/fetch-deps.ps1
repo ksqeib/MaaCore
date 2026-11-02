@@ -135,7 +135,7 @@ if ($expectedHash -notmatch '^[0-9a-f]{64}$') {
     throw "Deps manifest target '$Target' has an invalid sha256 value: '$expectedHash'"
 }
 if ($expectedHash -eq ('0' * 64)) {
-    throw "Deps manifest target '$Target' still has a placeholder sha256. Run tools/pack-deps.ps1 -UpdateManifest and publish the asset first."
+    throw "Deps manifest target '$Target' still has a placeholder sha256. Run tools/pack-fastdeploy.ps1 -UpdateManifest and publish the asset first."
 }
 
 $depsDir = Join-Path $RepoRoot "deps"
@@ -205,12 +205,27 @@ if ($needsDownload) {
     Move-Item -LiteralPath $partialPath -Destination $archivePath -Force
 }
 
-if (-not (Test-Path $depsDir)) {
-    New-Item -ItemType Directory -Path $depsDir -Force | Out-Null
+$fastDeployDir = Join-Path $CacheDir ("fastdeploy-" + $bundleVersion)
+if (Test-Path $fastDeployDir) {
+    Remove-Item $fastDeployDir -Recurse -Force
+}
+New-Item -ItemType Directory -Path $fastDeployDir -Force | Out-Null
+
+Write-Host "Extracting $archiveName to $fastDeployDir"
+Expand-Archive -LiteralPath $archivePath -DestinationPath $fastDeployDir -Force
+
+$fastDeployRoot = $fastDeployDir
+$nested = Join-Path $fastDeployDir "deps"
+if (Test-Path (Join-Path $nested "include\fastdeploy")) {
+    $fastDeployRoot = $nested
+}
+if (-not (Test-Path (Join-Path $fastDeployRoot "include\fastdeploy"))) {
+    throw "FastDeploy bundle extracted but include/fastdeploy is missing: $fastDeployRoot"
 }
 
-Write-Host "Extracting $archiveName to $depsDir"
-Expand-Archive -LiteralPath $archivePath -DestinationPath $RepoRoot -Force
+$buildScript = Join-Path $PSScriptRoot "build-upstream-deps.ps1"
+$upstreamCache = Join-Path $RepoRoot ".bootstrap\upstream-deps"
+& $buildScript -RepoRoot $RepoRoot -DepsDir $depsDir -FastDeployFrom $fastDeployRoot -CacheDir $upstreamCache
 
 $requiredPaths = @(
     (Join-Path $depsDir "include"),
@@ -220,7 +235,7 @@ $requiredPaths = @(
 )
 foreach ($path in $requiredPaths) {
     if (-not (Test-Path $path)) {
-        throw "Dependency bundle extracted but required path is missing: $path"
+        throw "Dependency assembly finished but required path is missing: $path"
     }
 }
 

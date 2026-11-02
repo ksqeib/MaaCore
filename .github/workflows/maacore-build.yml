@@ -49,9 +49,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps
-          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json') }}
+          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json', 'tools/build-upstream-deps.ps1', 'tools/fetch-deps.ps1', 'cmake/**') }}
           restore-keys: |
             maacore-deps-${{ runner.os }}-
+
+      - name: Cache upstream downloads
+        uses: actions/cache@v4
+        with:
+          path: .bootstrap/upstream-deps
+          key: upstream-deps-downloads-${{ runner.os }}-${{ hashFiles('tools/build-upstream-deps.ps1') }}
+          restore-keys: |
+            upstream-deps-downloads-${{ runner.os }}-
 
       - name: Cache CMake build directory
         uses: actions/cache@v4
