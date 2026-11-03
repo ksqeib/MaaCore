@@ -10,11 +10,6 @@ on:
         description: Release tag, for example v1.0.0
         required: true
         type: string
-      include_cuda:
-        description: Include onnxruntime_providers_cuda.dll (~170 MB)
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -37,6 +32,13 @@ jobs:
         with:
           tool: sccache
 
+      - name: Ensure 7-Zip
+        shell: pwsh
+        run: |
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            choco install 7zip -y --no-progress
+          }
+
       - name: Cache sccache
         uses: actions/cache@v4
         with:
@@ -49,7 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps
-          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json', 'tools/build-upstream-deps.ps1', 'tools/fetch-deps.ps1', 'cmake/**') }}
+          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json', 'tools/deps-versions.json', 'tools/build-upstream-deps.ps1', 'tools/fetch-deps.ps1', 'cmake/**') }}
           restore-keys: |
             maacore-deps-${{ runner.os }}-
 
@@ -57,7 +59,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .bootstrap/upstream-deps
-          key: upstream-deps-downloads-${{ runner.os }}-${{ hashFiles('tools/build-upstream-deps.ps1') }}
+          key: upstream-deps-downloads-${{ runner.os }}-${{ hashFiles('tools/build-upstream-deps.ps1', 'tools/deps-versions.json') }}
           restore-keys: |
             upstream-deps-downloads-${{ runner.os }}-
 
@@ -85,17 +87,13 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
-          $packageArgs = @("-Version", $version, "-Config", "RelWithDebInfo")
-          if ("${{ inputs.include_cuda }}" -eq "true") {
-            $packageArgs += "-IncludeCuda"
-          }
-          powershell -ExecutionPolicy Bypass -File .\tools\package-sdk.ps1 @packageArgs
+          powershell -ExecutionPolicy Bypass -File .\tools\package-sdk.ps1 -Version $version -Config RelWithDebInfo
 
       - name: Upload SDK artifact
         uses: actions/upload-artifact@v4
         with:
           name: MaaCore-sdk-windows-x64
-          path: dist/MaaCore-sdk-*.zip
+          path: dist/MaaCore-sdk-*
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -103,5 +101,5 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           name: MaaCore SDK ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-          files: dist/MaaCore-sdk-*.zip
+          files: dist/MaaCore-sdk-*
           generate_release_notes: true

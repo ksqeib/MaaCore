@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps
-          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json', 'tools/build-upstream-deps.ps1', 'tools/fetch-deps.ps1', 'cmake/**') }}
+          key: maacore-deps-${{ runner.os }}-${{ hashFiles('tools/deps-manifest.json', 'tools/deps-versions.json', 'tools/build-upstream-deps.ps1', 'tools/fetch-deps.ps1', 'cmake/**') }}
           restore-keys: |
             maacore-deps-${{ runner.os }}-
 
@@ -62,7 +62,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .bootstrap/upstream-deps
-          key: upstream-deps-downloads-${{ runner.os }}-${{ hashFiles('tools/build-upstream-deps.ps1') }}
+          key: upstream-deps-downloads-${{ runner.os }}-${{ hashFiles('tools/build-upstream-deps.ps1', 'tools/deps-versions.json') }}
           restore-keys: |
             upstream-deps-downloads-${{ runner.os }}-
 
