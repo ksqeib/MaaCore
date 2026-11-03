@@ -7,7 +7,8 @@ param(
     [int]$Parallel = 0,
     [switch]$NoFresh,
     [switch]$UseSccache,
-    [switch]$SkipBootstrap
+    [switch]$SkipBootstrap,
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -145,6 +146,9 @@ Invoke-Step "Configure CMake" {
     }
     if ($effectiveGenerator -like "Visual Studio *") {
         $cmakeArgs += @("-A", $Arch)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        $cmakeArgs += "-DMAA_HASH_VERSION=$Version"
     }
     if ($UseSccache) {
         $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue

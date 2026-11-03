@@ -16,6 +16,11 @@ on:
         required: false
         default: 0
         type: number
+      version:
+        description: Version string for AsstGetVersion (empty = git describe)
+        required: false
+        default: ""
+        type: string
 
 jobs:
   build-windows:
@@ -87,7 +92,11 @@ jobs:
           Write-Host "Build config: $env:BUILD_CONFIG"
           Write-Host "Build parallelism: $parallel"
           sccache --zero-stats
-          powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 -SkipBootstrap -NoFresh -UseSccache -Config $env:BUILD_CONFIG -Generator $generator -Parallel $parallel
+          $buildArgs = @("-SkipBootstrap", "-NoFresh", "-UseSccache", "-Config", $env:BUILD_CONFIG, "-Generator", $generator, "-Parallel", $parallel)
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.version }}")) {
+            $buildArgs += @("-Version", "${{ inputs.version }}")
+          }
+          powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 @buildArgs
 
       - name: Show sccache stats
         if: always()

@@ -71,6 +71,16 @@ powershell -File .\tools\build-maacore-only.ps1 -UseSccache -NoFresh
 - `build-standalone/bin/RelWithDebInfo/MaaCore.dll`
 - `build-standalone/bin/RelWithDebInfo/MaaCore.pdb`
 
+`AsstGetVersion()` 返回构建时写入的版本号：
+
+- 发布 CI 使用 `v*` tag（例如 `v0.1.3`）
+- 本地构建默认使用 `git describe --tags --always --dirty`
+- 可用 `-Version` 显式覆盖：
+
+```powershell
+powershell -File .\tools\build-maacore-only.ps1 -Version v0.1.3
+```
+
 ### 3) 打 SDK 发布包
 
 ```powershell

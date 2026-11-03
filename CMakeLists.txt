@@ -18,6 +18,24 @@ if(INSTALL_FLATTEN)
         PUBLIC_HEADER DESTINATION .)
 endif()
 
+# Version string exposed by AsstGetVersion(). Release CI passes -DMAA_HASH_VERSION=<tag>;
+# otherwise derive it from git so local builds never report DEBUG_VERSION.
+if(NOT DEFINED MAA_HASH_VERSION OR MAA_HASH_VERSION STREQUAL "")
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" describe --tags --always --dirty
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            RESULT_VARIABLE _maa_git_result
+            OUTPUT_VARIABLE _maa_git_version
+            ERROR_QUIET
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(_maa_git_result EQUAL 0 AND NOT _maa_git_version STREQUAL "")
+            set(MAA_HASH_VERSION "${_maa_git_version}" CACHE STRING "MaaCore version" FORCE)
+        endif()
+    endif()
+endif()
+
 # Dependency layout:
 #   deps/      prebuilt third-party binaries (OpenCV / ONNXRuntime / fastdeploy / Boost / zlib)
 #              Provisioned by tools/fetch-deps.ps1 from a pinned release asset; not tracked.
