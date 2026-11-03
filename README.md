@@ -87,15 +87,27 @@ powershell -File .\tools\build-maacore-only.ps1 -Version v0.1.3
 powershell -File .\tools\package-sdk.ps1 -Version v1.0.0
 ```
 
-输出 `dist/MaaCore-sdk-windows-x64-v1.0.0.zip`，**zip 根目录直接是 `bin/` 和 `include/`**，不套版本目录：
+默认使用 7z（不可用时回退 zip），输出两个归档：
 
 ```
-bin/        MaaCore.dll / MaaCore.pdb / MaaUtils.dll / 运行时 DLL（OpenCV、ONNXRuntime、fastdeploy、DirectML）
-include/    对外 API 头文件
-README.md   集成说明
+dist/MaaCore-sdk-windows-x64-v1.0.0.7z
+  bin/MaaCore.dll
+  bin/MaaUtils.dll
+  deps.json          依赖版本信息（供自动化识别）
+  README.md
+  LICENSE.md
+
+dist/MaaCore-sdk-windows-x64-v1.0.0-symbols.7z
+  bin/MaaCore.pdb
+  bin/MaaUtils.pdb
 ```
 
-默认不包含 CUDA provider；需要时把 `onnxruntime_providers_cuda.dll` 放进 `deps/runtime/maa-x64-windows/` 再加 `-IncludeCuda`。`resource/` 由启动器自行分发，不打进 SDK。
+- 默认**不打包**第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），启动器根据 `deps.json` 自行准备。
+- 默认**不打包** PDB，PDB 单独放在 `-symbols` 归档。
+- 默认**不打包**头文件；需要时加 `-IncludeHeaders`，需要第三方 DLL 时加 `-IncludeRuntime`。
+- `deps.json` 包含 `maaCore.version`、`maaCore.commit`、各依赖版本、运行时文件名映射，以及 FastDeploy 小包的 URL / SHA-256。
+
+`resource/` 由启动器自行分发，不打进 SDK。
 
 ### 维护 FastDeploy 包
 
@@ -119,7 +131,7 @@ powershell -File .\tools\pack-fastdeploy.ps1 -BundleVersion v1 -UpdateManifest
 ## GitHub CI
 
 - 构建工作流：`.github/workflows/maacore-build.yml`（**仅手动 `workflow_dispatch`**；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
-- 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本；发布 SDK zip）
+- 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本；发布主包 + symbols 归档）
 - 上游同步工作流：`.github/workflows/sync_upstream_core.yml`（每日 03:00 定时运行，也可手动触发）
 - 不再在 push / PR 时自动触发构建，避免消耗 Actions 配额
 - CI 会同时缓存 `deps/` 和 `.bootstrap/upstream-deps`；首次未命中时自动下载官方包并编译 Boost.Regex / zlib

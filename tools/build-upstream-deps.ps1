@@ -236,28 +236,23 @@ function Resolve-FastDeploySource {
     return $root
 }
 
-$assets = @(
-    @{
-        File   = "opencv-4.12.0-windows.exe"
-        Url    = "https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe"
-        Sha256 = "b753b14d880b9bc8d89d6acd3b665c040baec0211078435432fcae117db707af"
-    },
-    @{
-        File   = "Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
-        Url    = "https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
-        Sha256 = "b8086f881f2ba6175c011b1fc9c5bc4cc95543db724a17f52f339c6d2e9a5827"
-    },
-    @{
-        File   = "boost_1_89_0.tar.gz"
-        Url    = "https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.gz"
-        Sha256 = "9de758db755e8330a01d995b0a24d09798048400ac25c03fc5ea9be364b13c93"
-    },
-    @{
-        File   = "zlib-1.3.1.tar.gz"
-        Url    = "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz"
-        Sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+$versionsPath = Join-Path $PSScriptRoot "deps-versions.json"
+if (-not (Test-Path $versionsPath)) {
+    throw "Dependency version manifest not found: $versionsPath"
+}
+$versions = Get-Content -LiteralPath $versionsPath -Raw | ConvertFrom-Json
+
+$assets = foreach ($name in @("opencv", "onnxruntime", "boost", "zlib")) {
+    $dep = $versions.dependencies.$name
+    if ($null -eq $dep -or [string]::IsNullOrWhiteSpace($dep.file) -or [string]::IsNullOrWhiteSpace($dep.url) -or [string]::IsNullOrWhiteSpace($dep.sha256)) {
+        throw "deps-versions.json is missing file/url/sha256 for '$name'"
     }
-)
+    @{
+        File   = [string]$dep.file
+        Url    = [string]$dep.url
+        Sha256 = [string]$dep.sha256
+    }
+}
 
 New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
 
@@ -273,10 +268,10 @@ try {
         }
     }
 
-    $opencvExe = Join-Path $CacheDir "opencv-4.12.0-windows.exe"
-    $ortNupkg = Join-Path $CacheDir "Microsoft.ML.OnnxRuntime.DirectML.1.19.2.nupkg"
-    $boostTar = Join-Path $CacheDir "boost_1_89_0.tar.gz"
-    $zlibTar = Join-Path $CacheDir "zlib-1.3.1.tar.gz"
+    $opencvExe = Join-Path $CacheDir $versions.dependencies.opencv.file
+    $ortNupkg = Join-Path $CacheDir $versions.dependencies.onnxruntime.file
+    $boostTar = Join-Path $CacheDir $versions.dependencies.boost.file
+    $zlibTar = Join-Path $CacheDir $versions.dependencies.zlib.file
 
     $opencvRoot = Join-Path $staging "opencv"
     $ortRoot = Join-Path $staging "ort"

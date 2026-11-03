@@ -6,7 +6,7 @@ This repository is maintained only for building:
 
 - `MaaCore.dll`
 - `MaaCore.pdb`
-- an optional launcher-facing SDK zip (`tools/package-sdk.ps1`)
+- an optional launcher-facing SDK archive (`tools/package-sdk.ps1`)
 
 No GUI, packaging of `resource/`, or runtime functional validation is required in this repo workflow.
 

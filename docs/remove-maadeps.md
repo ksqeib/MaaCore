@@ -125,17 +125,28 @@ debug/bin/fastdeploy_ppocr_maa.dll
 ## 发布 SDK
 
 ```powershell
-powershell -File .\tools\package-sdk.ps1 -Version v0.1.1
+powershell -File .\tools\package-sdk.ps1 -Version v0.1.4
 ```
 
-产物 `dist/MaaCore-sdk-windows-x64-v0.1.1.zip` 的**根目录直接是 `bin/` 和 `include/`**，不套版本目录，方便启动器/脚本直接解压识别：
+默认使用 7z（不可用时回退 zip），输出两个归档，根目录不套版本目录：
 
 ```
-bin/        MaaCore.dll / MaaCore.pdb / MaaUtils.dll / 运行时 DLL
-include/    对外 API 头文件
-README.md   集成说明
-LICENSE.md
+dist/MaaCore-sdk-windows-x64-v0.1.4.7z
+  bin/MaaCore.dll
+  bin/MaaUtils.dll
+  deps.json
+  README.md
+  LICENSE.md
+
+dist/MaaCore-sdk-windows-x64-v0.1.4-symbols.7z
+  bin/MaaCore.pdb
+  bin/MaaUtils.pdb
 ```
+
+- 默认不打包第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），启动器根据 `deps.json` 自行准备。
+- 默认不打包 PDB，PDB 单独放在 `-symbols` 归档。
+- 默认不打包头文件；需要时加 `-IncludeHeaders`，需要第三方 DLL 时加 `-IncludeRuntime`。
+- `deps.json` 包含 MaaCore 版本/commit、依赖版本、运行时文件名映射，以及 FastDeploy 小包 URL / SHA-256。
 
 CI 中由 `.github/workflows/maacore-release.yml` 在 `v*` tag 或手动触发时自动完成构建和发布。
 
