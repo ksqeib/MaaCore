@@ -47,7 +47,7 @@ Invoke-Step "Validate local headers" {
 Invoke-Step "Ensure prebuilt dependencies" {
     $fetchArgs = @{
         RepoRoot     = $RepoRoot
-        ManifestPath = (Join-Path $PSScriptRoot "deps-manifest.json")
+        ManifestPath = (Join-Path $PSScriptRoot "fastdeploy-manifest.json")
     }
     if (-not [string]::IsNullOrWhiteSpace($DepsTarget)) {
         $fetchArgs.Target = $DepsTarget

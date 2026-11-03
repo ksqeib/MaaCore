@@ -59,7 +59,7 @@
 若目标严格是“只编译产物”：
 
 - 必保留并跟踪：`include/upstream`、`include/3rd`、`MaaUtils/`（源码）。
-- 二进制依赖通过 `deps/` 提供，由 `tools/deps-manifest.json` 锚定并校验 SHA-256；`deps/` 由 `tools/build-upstream-deps.ps1` 从上游官方发布物组装。
+- 二进制依赖通过 `deps/` 提供：构建期 FastDeploy 小包由 `tools/fastdeploy-manifest.json` 锚定，其余依赖由 `tools/deps-versions.json` 和 `tools/build-upstream-deps.ps1` 从上游官方发布物组装；客户端运行库由 `tools/runtime-manifest.json` 锚定。
 - `resource` 非编译依赖，不纳入默认构建流程。
 
 这也是当前脚本和 `CMakeLists.txt` 以“仅产出 DLL/PDB”为目标进行精简的原因。

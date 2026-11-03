@@ -34,7 +34,7 @@ if ([string]::IsNullOrWhiteSpace($DepsDir)) {
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $RepoRoot "dist"
 }
-$manifestPath = Join-Path $PSScriptRoot "deps-manifest.json"
+$manifestPath = Join-Path $PSScriptRoot "fastdeploy-manifest.json"
 
 if (-not (Test-Path (Join-Path $DepsDir "include\fastdeploy"))) {
     throw "Deps directory does not look like a deps tree: $DepsDir"
@@ -181,4 +181,4 @@ Write-Host ""
 Write-Host "Next steps:"
 Write-Host "  1. Create a GitHub release tagged '$releaseTag' (or use an existing one)."
 Write-Host "  2. Upload '$assetName' as a release asset."
-Write-Host "  3. Commit the updated tools/deps-manifest.json."
+Write-Host "  3. Commit the updated tools/fastdeploy-manifest.json."

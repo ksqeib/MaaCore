@@ -12,7 +12,7 @@
   - zlib 1.3.1（官方源码，固定 URL，静态库）
 - FastDeploy 1.0.7 是唯一没有匹配上游 Windows 预编译包的组件，单独发布一个约 15 MB 的小包（含 `DirectML.dll`）。
 - `MaaUtils` 以源码形式 vendored 在仓库中，随工程编译。
-- `tools/deps-manifest.json` 现在锚定的是 **FastDeploy 小包**的 URL + SHA-256。
+- `tools/fastdeploy-manifest.json` 现在锚定的是 **FastDeploy 小包**的 URL + SHA-256。
 - 首次 bootstrap 需下载约 400 MB 官方包并编译 Boost.Regex / zlib；之后直接复用 `deps/`。
 - 实测通过：Release / Debug 构建、`AsstLoadResource` / `AsstCreate`、FastDeploy OCR 推理、ONNXRuntime 会话、Boost.Process 子进程。
 
@@ -39,7 +39,7 @@ cmake/
     ├── OpenCVConfig.cmake   官方 OpenCV + _maa 命名适配
     └── BoostConfig.cmake    官方 Boost + 编译宏
 tools/
-├── deps-manifest.json       FastDeploy 小包清单（URL + sha256 + 版本）
+├── fastdeploy-manifest.json FastDeploy 小包清单（URL + sha256 + 版本）
 ├── fetch-deps.ps1           下载 FastDeploy 小包 + 调用本地依赖组装
 ├── build-upstream-deps.ps1  下载官方包、编译 Boost/zlib、组装 deps/
 ├── pack-fastdeploy.ps1      把 deps/ 中的 FastDeploy 打成小包
@@ -56,7 +56,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\build-maacore-only.ps1 -SkipBoo
 
 `fetch-deps.ps1` 的行为：
 
-1. 读取 `tools/deps-manifest.json`，按平台选择 target（如 `windows-x64`）；
+1. 读取 `tools/fastdeploy-manifest.json`，按平台选择 target（如 `windows-x64`）；
 2. 命中 `deps/.bundle-version` 标记就直接返回；
 3. 否则下载 FastDeploy 小包到 `.bootstrap/deps/`，校验 SHA-256 后解压；
 4. 调用 `build-upstream-deps.ps1`：
@@ -102,7 +102,7 @@ FastDeploy 小包按以下顺序取用：
 powershell -File .\tools\pack-fastdeploy.ps1 -BundleVersion v1 -UpdateManifest
 ```
 
-生成 `dist/MaaCore-fastdeploy-windows-x64-v1.zip`（约 15 MB），上传到 tag 为 `fastdeploy-v1` 的 GitHub Release，再提交 `tools/deps-manifest.json`。
+生成 `dist/MaaCore-fastdeploy-windows-x64-v1.zip`（约 15 MB），上传到 tag 为 `fastdeploy-v1` 的 GitHub Release，再提交 `tools/fastdeploy-manifest.json`。
 
 当前 FastDeploy 包：
 
@@ -121,6 +121,8 @@ share/fastdeploy_ppocr
 debug/lib/fastdeploy_ppocr.lib
 debug/bin/fastdeploy_ppocr_maa.dll
 ```
+
+> 这个 FastDeploy 包是 **bootstrap 的构建期输入**（头文件、导入库、DLL、DirectML）。客户端运行库使用下面的统一 runtime bundle，不需要直接处理这个包。
 
 ## 发布 SDK
 
@@ -143,12 +145,41 @@ dist/MaaCore-sdk-windows-x64-v0.1.4-symbols.7z
   bin/MaaUtils.pdb
 ```
 
-- 默认不打包第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），启动器根据 `deps.json` 自行准备。
+- 默认不打包第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），客户端根据 `deps.json` 下载统一的 runtime bundle。
 - 默认不打包 PDB，PDB 单独放在 `-symbols` 归档。
 - 默认不打包头文件；需要时加 `-IncludeHeaders`，需要第三方 DLL 时加 `-IncludeRuntime`。
-- `deps.json` 包含 MaaCore 版本/commit、依赖版本、运行时文件名映射，以及 FastDeploy 小包 URL / SHA-256。
+- `deps.json` 使用 `schemaVersion: 2`，包含：
+  - `build`：Boost / zlib 等静态构建依赖
+  - `runtime.windows-x64.bundle`：统一运行库 zip 的 URL / SHA-256 / size
+  - `runtime.windows-x64.files`：每个运行库 DLL 的依赖名、版本、SHA-256
 
 CI 中由 `.github/workflows/maacore-release.yml` 在 `v*` tag 或手动触发时自动完成构建和发布。
+
+## 发布运行库 bundle
+
+```powershell
+powershell -File .\tools\pack-runtime.ps1 -BundleVersion v1 -UpdateManifest
+```
+
+生成 `dist/MaaCore-runtime-windows-x64-v1.zip`（约 37 MB），上传到 tag 为 `runtime-v1` 的 GitHub Release，再提交 `tools/runtime-manifest.json`。
+
+运行库 bundle 只包含运行期 DLL：
+
+```
+opencv_world4_maa.dll
+onnxruntime_maa.dll
+DirectML.dll
+fastdeploy_ppocr_maa.dll
+```
+
+Boost / zlib 是静态链接，不在 bundle 里。客户端只需要：
+
+1. 读 `deps.json` 的 `runtime.windows-x64.bundle`
+2. 下载并校验 SHA-256 / size
+3. 解压到 `bin/`
+4. 可选按 `runtime.windows-x64.files` 校验每个 DLL
+
+不需要分别处理 OpenCV 的 exe、ONNX Runtime 的 nupkg。
 
 ## 关于 MaaDeps 的 patch
 

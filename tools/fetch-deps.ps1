@@ -6,7 +6,7 @@
     The third-party binaries MaaCore needs (OpenCV / ONNXRuntime / fastdeploy_ppocr /
     Boost / zlib) are published as a single pinned release asset instead of being
     downloaded through the MaaDeps submodule. This script resolves the asset from
-    tools/deps-manifest.json, verifies its SHA-256 and extracts it into <repo>/deps.
+    tools/fastdeploy-manifest.json, verifies its SHA-256 and extracts it into <repo>/deps.
 
     The bundle is only needed to *build* MaaCore. Consumers of a released SDK package
     do not need to run this script.
@@ -18,7 +18,7 @@
     Manifest target key. Defaults to the host platform, e.g. windows-x64.
 
 .PARAMETER ManifestPath
-    Path to the deps manifest. Defaults to tools/deps-manifest.json.
+    Path to the deps manifest. Defaults to tools/fastdeploy-manifest.json.
 
 .PARAMETER CacheDir
     Download cache directory. Defaults to <repo>/.bootstrap/deps.
@@ -29,7 +29,7 @@
 param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$Target = "",
-    [string]$ManifestPath = (Join-Path $PSScriptRoot "deps-manifest.json"),
+    [string]$ManifestPath = (Join-Path $PSScriptRoot "fastdeploy-manifest.json"),
     [string]$CacheDir = "",
     [switch]$Force
 )

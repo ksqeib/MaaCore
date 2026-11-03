@@ -21,7 +21,7 @@ powershell -File .\tools\bootstrap-standalone.ps1
 
 首次运行会：
 
-1. 从 `tools/deps-manifest.json` 下载约 15 MB 的 FastDeploy 包（含 `DirectML.dll`）
+1. 从 `tools/fastdeploy-manifest.json` 下载约 15 MB 的 FastDeploy 包（含 `DirectML.dll`）
 2. 从官方固定 URL 下载 OpenCV 4.12.0、ONNXRuntime 1.19.2 DirectML、Boost 1.89、zlib 1.3.1（约 400 MB，缓存到 `.bootstrap/upstream-deps`）
 3. 本地编译 Boost.Regex 与 zlib
 4. 组装 `deps/`
@@ -44,7 +44,7 @@ powershell -File .\tools\fetch-deps.ps1 -Force
 powershell -File .\tools\build-upstream-deps.ps1
 ```
 
-脚本会下载/复用官方包，编译 Boost.Regex 与 zlib，并从官方 DLL 生成 `_maa` 命名导入库。FastDeploy 默认来自现有 `deps/` 或 `tools/deps-manifest.json` 指向的小包。
+脚本会下载/复用官方包，编译 Boost.Regex 与 zlib，并从官方 DLL 生成 `_maa` 命名导入库。FastDeploy 默认来自现有 `deps/` 或 `tools/fastdeploy-manifest.json` 指向的小包。
 
 ### 2) 编译 MaaCore
 
@@ -102,23 +102,35 @@ dist/MaaCore-sdk-windows-x64-v1.0.0-symbols.7z
   bin/MaaUtils.pdb
 ```
 
-- 默认**不打包**第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），启动器根据 `deps.json` 自行准备。
+- 默认**不打包**第三方 DLL（OpenCV / ONNXRuntime / DirectML / FastDeploy），客户端根据 `deps.json` 下载统一的 runtime bundle。
 - 默认**不打包** PDB，PDB 单独放在 `-symbols` 归档。
 - 默认**不打包**头文件；需要时加 `-IncludeHeaders`，需要第三方 DLL 时加 `-IncludeRuntime`。
-- `deps.json` 包含 `maaCore.version`、`maaCore.commit`、各依赖版本、运行时文件名映射，以及 FastDeploy 小包的 URL / SHA-256。
+- `deps.json` 使用 `schemaVersion: 2`：
+  - `build`：Boost / zlib 等静态构建依赖
+  - `runtime.windows-x64.bundle`：统一运行库 zip 的 URL / SHA-256 / size
+  - `runtime.windows-x64.files`：每个 DLL 的依赖名、版本、SHA-256
 
 `resource/` 由启动器自行分发，不打进 SDK。
 
-### 维护 FastDeploy 包
+### 维护 FastDeploy / Runtime 包
 
-OpenCV / ONNXRuntime / Boost / zlib 不再整包发布，bootstrap 时直接从官方 URL 下载。只有 FastDeploy 需要一个小的发布包：
+`FastDeploy` 小包是**构建期输入**（头文件、导入库、DLL、DirectML），bootstrap 使用：
 
 ```powershell
-# 从现有 deps/ 提取 FastDeploy + DirectML，更新 tools/deps-manifest.json
+# 从现有 deps/ 提取 FastDeploy + DirectML，更新 tools/fastdeploy-manifest.json
 powershell -File .\tools\pack-fastdeploy.ps1 -BundleVersion v1 -UpdateManifest
 ```
 
-生成的 `dist/MaaCore-fastdeploy-windows-x64-v1.zip`（约 15 MB）上传到 tag 为 `fastdeploy-v1` 的 GitHub Release 即可。
+生成的 `dist/MaaCore-fastdeploy-windows-x64-v1.zip`（约 15 MB）上传到 tag 为 `fastdeploy-v1` 的 GitHub Release。
+
+客户端运行库是另一个统一 bundle：
+
+```powershell
+# 打包 OpenCV / ONNXRuntime / DirectML / FastDeploy 运行 DLL，更新 tools/runtime-manifest.json
+powershell -File .\tools\pack-runtime.ps1 -BundleVersion v1 -UpdateManifest
+```
+
+生成的 `dist/MaaCore-runtime-windows-x64-v1.zip`（约 37 MB）上传到 tag 为 `runtime-v1` 的 GitHub Release。客户端只需要下载、校验、解压这一个包，不需要分别处理 OpenCV 的 exe、ONNX 的 nupkg。
 
 ### 依赖引用说明
 

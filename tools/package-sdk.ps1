@@ -62,10 +62,11 @@ foreach ($path in @($dllPath, $maaUtilsPath)) {
 }
 
 $versionsPath = Join-Path $PSScriptRoot "deps-versions.json"
-$manifestPath = Join-Path $PSScriptRoot "deps-manifest.json"
+$runtimeManifestPath = Join-Path $PSScriptRoot "runtime-manifest.json"
 if (-not (Test-Path $versionsPath)) { throw "Missing dependency version manifest: $versionsPath" }
+if (-not (Test-Path $runtimeManifestPath)) { throw "Missing runtime dependency manifest: $runtimeManifestPath" }
 $versions = Get-Content -LiteralPath $versionsPath -Raw | ConvertFrom-Json
-$fastDeployManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
 
 function Get-SevenZip {
     $cmd = Get-Command 7z -ErrorAction SilentlyContinue
@@ -183,25 +184,37 @@ try {
     $commit = git -C $RepoRoot rev-parse HEAD 2>$null
     if ($LASTEXITCODE -ne 0) { $commit = "" }
 
-    $targetEntry = $fastDeployManifest.targets.$Target
+    $runtimeTarget = $runtimeManifest.targets.$Target
+    if ($null -eq $runtimeTarget) {
+        throw "runtime-manifest.json has no target '$Target'"
+    }
+    if ($runtimeTarget.bundle.sha256 -eq ('0' * 64)) {
+        throw "runtime-manifest.json still has a placeholder bundle sha256; run tools/pack-runtime.ps1 -UpdateManifest first"
+    }
+
+    $runtimeTargets = [ordered]@{}
+    $runtimeTargets[$Target] = [ordered]@{
+        bundle = $runtimeTarget.bundle
+        files  = $runtimeTarget.files
+    }
+
     $depsInfo = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         maaCore = [ordered]@{
             version = $Version
             commit  = $commit.Trim()
         }
-        dependencies = $versions.dependencies
-        runtimeFiles = [ordered]@{
-            "opencv_world4_maa.dll"     = "opencv"
-            "onnxruntime_maa.dll"       = "onnxruntime"
-            "DirectML.dll"              = "directml"
-            "fastdeploy_ppocr_maa.dll"  = "fastdeploy"
+        build = [ordered]@{
+            boost = [ordered]@{
+                version = [string]$versions.dependencies.boost.version
+                linkage = "static"
+            }
+            zlib = [ordered]@{
+                version = [string]$versions.dependencies.zlib.version
+                linkage = "static"
+            }
         }
-        fastdeployBundle = [ordered]@{
-            version = $fastDeployManifest.bundleVersion
-            url     = $targetEntry.url
-            sha256  = $targetEntry.sha256
-        }
+        runtime = $runtimeTargets
     }
     $depsJson = $depsInfo | ConvertTo-Json -Depth 12
     [System.IO.File]::WriteAllText(

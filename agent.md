@@ -22,8 +22,10 @@ No GUI, packaging of `resource/`, or runtime functional validation is required i
 - Keep required third-party headers in `include/3rd/` (tracked in this repo).
 - Keep `MaaUtils/` source vendored and build it in-tree (no git submodule).
 - Provide binary deps through `deps/`, assembled locally by `tools/fetch-deps.ps1` / `tools/build-upstream-deps.ps1`.
-- OpenCV / ONNXRuntime / Boost / zlib are downloaded from their official fixed URLs; do not publish a full deps bundle.
-- `tools/deps-manifest.json` pins the small FastDeploy bundle (URL + SHA-256); FastDeploy is the only published binary.
+- OpenCV / ONNXRuntime / Boost / zlib are downloaded from their official fixed URLs; do not publish a full build-deps bundle.
+- `tools/fastdeploy-manifest.json` pins the build-time FastDeploy bundle (headers/libs/DLLs/DirectML).
+- `tools/runtime-manifest.json` pins the client-facing unified runtime DLL bundle (OpenCV/ORT/DirectML/FastDeploy) with per-file SHA-256.
+- `deps.json` in the SDK uses schemaVersion 2: `build` (static Boost/zlib) + `runtime.<target>.bundle/files`.
 - Do not reintroduce `MaaUtils/MaaDeps` as a submodule or download path.
 - Do not apply MaaDeps patches.
 
