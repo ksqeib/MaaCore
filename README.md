@@ -120,7 +120,7 @@ powershell -File .\tools\pack-fastdeploy.ps1 -BundleVersion v1 -UpdateManifest
 
 - 构建工作流：`.github/workflows/maacore-build.yml`（**仅手动 `workflow_dispatch`**；产物 artifact 为 `MaaCore.dll` + `MaaCore.pdb`）
 - 发布工作流：`.github/workflows/maacore-release.yml`（打 `v*` tag 或手动指定版本；发布 SDK zip）
-- 上游同步工作流：`.github/workflows/sync_upstream_core.yml`（**仅手动**，不再每日定时运行）
+- 上游同步工作流：`.github/workflows/sync_upstream_core.yml`（每日 03:00 定时运行，也可手动触发）
 - 不再在 push / PR 时自动触发构建，避免消耗 Actions 配额
 - CI 会同时缓存 `deps/` 和 `.bootstrap/upstream-deps`；首次未命中时自动下载官方包并编译 Boost.Regex / zlib
 - CI 已启用 `sccache`，可在日志中查看 `sccache --show-stats`
