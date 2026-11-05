@@ -1,0 +1,35 @@
+name: Sync Upstream Core
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  split-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 检出上游，必须带 fetch-depth: 0
+      - name: Checkout upstream MAA
+        uses: actions/checkout@v4
+        with:
+          repository: 'MaaAssistantArknights/MaaAssistantArknights'
+          ref: 'dev-v2'
+          fetch-depth: 0
+          # 关键点 1：使用具有推送权限的 PAT 进行初始化，同时保留凭据
+          token: ${{ secrets.SYNC_TOKEN }}
+          persist-credentials: true
+
+      # 2. 执行 subtree split 提取完整历史
+      - name: Split MaaCore subtree
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git subtree split -P src/MaaCore -b core-history
+
+      # 3. 添加本仓库的远程地址并强推
+      - name: Push to upstream-sync branch
+        run: |
+          # 关键点 2：显式添加目标仓库为 origin，直接利用上一步配置好的凭据推送
+          git remote set-url origin https://github.com/${{ github.repository }}.git || git remote add origin https://github.com/${{ github.repository }}.git
+          git push origin core-history:upstream-sync --force
